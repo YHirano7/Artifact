@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<style>
+:root{
+  --bg:#f7f8fb; --paper:#fff; --ink:#1f2330; --sub:#5a6070; --line:#d5d9e4;
+  --navy:#112274;
+  --ai-bg:#eceef3; --ai-ink:#3d4250; --ai-line:#9aa1b2;
+  --nd-bg:#dfe7fb; --nd-ink:#123a8f; --nd-line:#8eaae8;
+  --d-bg:#e2f3e8;  --d-ink:#1b6337; --d-line:#5fa77a;
+  --h-bg:#fbefc7;  --h-ink:#6b4f00; --h-line:#d9b23e;
+  --fb-bg:#efe6fb; --fb-ink:#5b2e9c; --fb-line:#a882d8;
+}
+html,body{margin:0}
+body{width:1920px;height:1960px;overflow:hidden;background:var(--bg);color:var(--ink);
+  font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;font-size:14px;line-height:1.45}
+.wrap{padding:26px 36px 0}
+h1{margin:0;text-align:center;font-size:33px;letter-spacing:.02em;color:var(--navy)}
+.rule{height:3px;background:var(--navy);width:180px;margin:10px auto 10px}
+.lead{text-align:center;font-size:17px;color:var(--ink);margin:0 0 10px}
+.lead b{color:var(--nd-ink)} .lead b.g{color:var(--d-ink)}
+.legend{display:flex;justify-content:center;gap:26px;font-size:13.5px;color:var(--sub);margin-bottom:14px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:16px;height:16px;border-radius:3px;display:inline-block;border:2.5px solid}
+.sw.ai{background:var(--ai-bg);border-color:var(--ai-line)}
+.sw.nd{background:var(--nd-bg);border-color:var(--nd-line)}
+.sw.d{background:var(--d-bg);border-color:var(--d-line)}
+.sw.h{background:var(--h-bg);border-color:var(--h-line)}
+.sw.fb{background:var(--fb-bg);border-color:var(--fb-line)}
+
+.main{display:grid;grid-template-columns:350px 1fr 390px;gap:20px}
+.col-title{font-size:19px;font-weight:700;color:var(--navy);margin:0 0 8px;display:flex;align-items:baseline;gap:8px}
+.col-title small{font-size:12.5px;color:var(--sub);font-weight:400}
+.ref{font-size:11px;color:var(--sub);font-weight:400}
+
+/* actors */
+.actor{background:var(--paper);border:1px solid var(--line);border-left:5px solid var(--ai-line);border-radius:8px;padding:8px 10px 9px;margin-bottom:8px}
+.actor.nd{border-left-color:var(--nd-line)} .actor.d{border-left-color:var(--d-line)} .actor.h{border-left-color:var(--h-line)} .actor.mix{border-left-color:var(--nd-line);border-image:linear-gradient(var(--nd-line),var(--d-line)) 1;border-left-width:5px}
+.actor .nm{font-weight:700;font-size:15px}
+.actor .nm em{font-style:normal;font-weight:400;font-size:12px;color:var(--sub);margin-left:6px}
+.actor .do{font-size:13px;color:var(--sub);margin:2px 0 5px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:12px;padding:1px 8px;border-radius:12px;border:1.3px solid;white-space:nowrap}
+.chip.ai{background:var(--ai-bg);border-color:var(--ai-line);color:var(--ai-ink)}
+.chip.nd{background:var(--nd-bg);border-color:var(--nd-line);color:var(--nd-ink)}
+.chip.d{background:var(--d-bg);border-color:var(--d-line);color:var(--d-ink)}
+.chip.h{background:var(--h-bg);border-color:var(--h-line);color:var(--h-ink)}
+.newjob{border:1.5px dashed var(--fb-line);background:var(--fb-bg);color:var(--fb-ink);border-radius:8px;padding:7px 10px;font-size:12.5px}
+
+/* funnel */
+.funnel{position:relative;padding-right:56px}
+.stage{border-radius:12px;border:2px solid;padding:10px 14px 12px;margin:0 auto;position:relative}
+.stage .hd{display:flex;align-items:baseline;gap:10px;margin-bottom:7px}
+.stage .hd .t{font-size:18px;font-weight:700}
+.stage .hd .s{font-size:13px}
+.op{font-size:22px;font-weight:800;margin-right:2px}
+.s0{background:var(--ai-bg);border-color:var(--ai-line);color:var(--ai-ink);width:100%}
+.s1{background:var(--nd-bg);border-color:var(--nd-line);width:96%}
+.s1 .t,.s1 .op{color:var(--nd-ink)}
+.s2{background:var(--d-bg);border-color:var(--d-line);width:91%}
+.s2 .t,.s2 .op{color:var(--d-ink)}
+.s3{background:var(--h-bg);border-color:var(--h-line);width:70%}
+.s3 .t,.s3 .op{color:var(--h-ink)}
+.s0 .seeds{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.seed{background:#fff;border:1px solid var(--ai-line);border-radius:6px;padding:4px 7px;font-size:12.5px;color:var(--ai-ink)}
+.seed b{display:inline-block;min-width:18px;height:18px;line-height:18px;text-align:center;border-radius:50%;background:var(--ai-ink);color:#fff;font-size:11px;margin-right:4px}
+.down{text-align:center;font-size:13px;color:var(--sub);margin:4px 0;line-height:1.2}
+.down i{font-style:normal;font-size:18px;color:var(--navy);display:block}
+
+table.it{width:100%;border-collapse:separate;border-spacing:0 3px;font-size:13px}
+table.it th{font-size:12px;font-weight:600;text-align:left;padding:0 8px 1px;color:var(--sub)}
+table.it td{background:#fff;padding:4px 8px;vertical-align:top}
+table.it td:first-child{border-radius:6px 0 0 6px;font-weight:700;white-space:nowrap}
+table.it td:last-child{border-radius:0 6px 6px 0}
+.s1 table.it td:first-child{border-left:3px solid var(--nd-line)}
+.s2 table.it td:first-child{border-left:3px solid var(--d-line)}
+.tag{display:inline-block;font-size:11px;font-weight:700;border-radius:50%;width:17px;height:17px;line-height:17px;text-align:center;background:var(--ai-ink);color:#fff;margin-right:3px}
+.promo{font-size:11.5px;font-weight:700;color:var(--d-ink);background:var(--d-bg);border:1px solid var(--d-line);border-radius:10px;padding:0 6px;white-space:nowrap}
+.prob{font-size:11.5px;color:var(--nd-ink);font-weight:700}
+.badge{margin-top:6px;border:1.5px dashed;border-radius:7px;padding:5px 10px;font-size:12.5px}
+.s1 .badge{border-color:var(--nd-line);background:#f2f6ff;color:var(--nd-ink)}
+.s2 .badge{border-color:var(--d-line);background:#f3fbf6;color:var(--d-ink)}
+.s3 .row{display:flex;gap:10px;font-size:13px}
+.s3 .row div{background:#fff;border-radius:6px;padding:5px 9px;flex:1}
+.out{width:46%;margin:6px auto 0;background:var(--navy);color:#fff;border-radius:10px;text-align:center;padding:7px;font-size:15px;font-weight:700}
+.out span{font-weight:400;font-size:12.5px;opacity:.85;display:block}
+.loop{position:absolute;right:0;top:300px;bottom:70px;width:44px;border:2px solid var(--fb-line);border-left:none;border-radius:0 14px 14px 0;background:transparent}
+.loop:before{content:"";position:absolute;left:-8px;top:-7px;border:7px solid transparent;border-right:10px solid var(--fb-line)}
+.looplab{position:absolute;right:-2px;top:420px;width:40px;writing-mode:vertical-rl;font-size:13px;font-weight:700;color:var(--fb-ink);background:var(--bg);padding:6px 0;letter-spacing:.05em}
+
+/* roadmap */
+.step{display:grid;grid-template-columns:44px 1fr;gap:8px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 9px;margin-bottom:7px}
+.step .no{font-weight:800;font-size:13px;color:#fff;border-radius:7px;text-align:center;padding-top:6px;line-height:1.15}
+.step .no.ai{background:#7c8396}.step .no.nd{background:#3d64c4}.step .no.d{background:#2f8a52}.step .no.fb{background:#7a4fc0}.step .no.h{background:#b08a12}
+.step .t{font-weight:700;font-size:14.5px}
+.step .x{font-size:12.8px;color:#333}
+.step .w{font-size:12px;color:var(--sub);margin-top:2px}
+
+/* bottom */
+.bottom{display:grid;grid-template-columns:560px 470px 1fr;gap:20px;margin-top:14px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 14px 12px}
+.card h3{margin:0 0 7px;font-size:17px;color:var(--navy)}
+table.cmp{width:100%;border-collapse:collapse;font-size:12.8px}
+table.cmp th,table.cmp td{border-bottom:1px solid #e6e8ef;padding:4px 6px;text-align:left;vertical-align:top}
+table.cmp th.c1{width:84px;color:var(--sub);font-weight:600}
+table.cmp thead th{font-size:13.5px}
+table.cmp thead th.nd{background:var(--nd-bg);color:var(--nd-ink)}
+table.cmp thead th.d{background:var(--d-bg);color:var(--d-ink)}
+.q{display:grid;grid-template-columns:1fr 22px 150px;align-items:center;gap:6px;margin-bottom:6px;font-size:13px}
+.q .qq{background:var(--gray,#f4f5f8);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+.q .ar{text-align:center;color:var(--navy);font-weight:700}
+.q .ans{border-radius:6px;padding:5px 8px;font-weight:700;font-size:12.5px;border:1.5px solid}
+.ans.d{background:var(--d-bg);border-color:var(--d-line);color:var(--d-ink)}
+.ans.nd{background:var(--nd-bg);border-color:var(--nd-line);color:var(--nd-ink)}
+.ans.fb{background:var(--fb-bg);border-color:var(--fb-line);color:var(--fb-ink)}
+.ans.h{background:var(--h-bg);border-color:var(--h-line);color:var(--h-ink)}
+table.ev{width:100%;border-collapse:collapse;font-size:12.6px}
+table.ev th{text-align:left;font-size:12px;color:var(--sub);font-weight:600;border-bottom:1.5px solid var(--line);padding:3px 6px}
+table.ev td{border-bottom:1px solid #e6e8ef;padding:4px 6px;vertical-align:top}
+table.ev td.k{font-weight:700;white-space:nowrap}
+table.ev td.i{color:var(--navy)}
+.src{margin-top:12px;font-size:11.5px;color:#6a6f7d;columns:3;column-gap:22px;line-height:1.5}
+.src div{break-inside:avoid}
+.src b{color:#444}
+.foot{font-size:11.5px;color:#6a6f7d;margin-top:4px}
+code{font-family:"DejaVu Sans Mono",monospace;font-size:11.5px;background:#f1f3f8;border:1px solid #e0e4ee;border-radius:4px;padding:0 4px;white-space:nowrap}
+.s2 table.it td:nth-child(4),.s2 table.it th:nth-child(4),.s2 table.it td:nth-child(5),.s2 table.it th:nth-child(5),.s1 table.it td:nth-child(4),.s1 table.it th:nth-child(4){white-space:nowrap}
+.s2 table.it td:nth-child(2){width:210px}
+</style></head>
+<body><div class="wrap">
+
+<h1>途中導入のAIDDは「引き算」で制御する ― 非決定論の制約で寄せ、決定論の制約で保証し、人が意図を確認する</h1>
+<div class="rule"></div>
+<p class="lead">モデルは常に“一般論としての最適解”を出してくる。既存システムの文脈は、その出力空間から <b>①確率的に寄せる制約</b> と <b class="g">②機械的に弾く制約</b> を順に引くことで与える。</p>
+<div class="legend">
+  <span><i class="sw ai"></i>AI（生成＝非決定論の源）</span>
+  <span><i class="sw nd"></i>① 非決定論的制約（ガイド：生成前に文脈で寄せる／守るのは“たぶん”）</span>
+  <span><i class="sw d"></i>② 決定論的制約（センサー・ゲート：生成後・実行前に機械で弾く／“必ず”）</span>
+  <span><i class="sw h"></i>③ 人の判断</span>
+  <span><i class="sw fb"></i>フィードバック（失敗→制約の更新）</span>
+</div>
+
+<div class="main">
+<!-- ===== 左：登場人物 ===== -->
+<div>
+  <div class="col-title">登場人物 <small>誰が・どの層の制約を供給するか</small></div>
+  <div class="actor">
+    <div class="nm">AIコーディングエージェント<em>モデル＋ツール群（ハーネス）</em></div>
+    <div class="do">計画・実装・テスト生成を担う。出力は毎回ゆらぐ。<span class="ref">[2][5]</span></div>
+    <div class="chips"><span class="chip ai">生成</span><span class="chip ai">自己修正（②の結果を読んで直す）</span></div>
+  </div>
+  <div class="actor h">
+    <div class="nm">開発者<em>操縦役（ステアリング）</em></div>
+    <div class="do">意図を伝え、タスクを小さく切り、差分を確認して承認する。<span class="ref">[7]</span></div>
+    <div class="chips"><span class="chip nd">タスク仕様・プロンプト</span><span class="chip h">レビュー・承認</span></div>
+  </div>
+  <div class="actor mix">
+    <div class="nm">アーキテクト / テックリード<em>ハーネス設計者</em></div>
+    <div class="do">「何を使い、何を使わないか」と設計判断の理由を残し、機械検査に落とす。<span class="ref">[3][20]</span></div>
+    <div class="chips"><span class="chip nd">技術スタック宣言</span><span class="chip nd">ADR</span><span class="chip nd">参照実装・Skills</span><span class="chip d">アーキテクチャテスト</span></div>
+  </div>
+  <div class="actor mix">
+    <div class="nm">ドメインエキスパート / PO<em>業務の正の持ち主</em></div>
+    <div class="do">言葉の意味と業務の順序・例外を定義する。ここが曖昧だとAIは一般用語で埋める。<span class="ref">[21]</span></div>
+    <div class="chips"><span class="chip nd">ドメイン用語集</span><span class="chip nd">業務フロー・仕様</span><span class="chip d">受入基準→受入テスト</span></div>
+  </div>
+  <div class="actor d">
+    <div class="nm">QA / セキュリティ / SRE<em>安全側の門番</em></div>
+    <div class="do">「破られたら事故・監査指摘になること」を機械検査にする。<span class="ref">[11][14]</span></div>
+    <div class="chips"><span class="chip d">権限・サンドボックス</span><span class="chip d">依存許可リスト</span><span class="chip d">テスト基盤</span></div>
+  </div>
+  <div class="actor d">
+    <div class="nm">CI/CD・Hooks<em>人ではない“機械の門番”</em></div>
+    <div class="do">同じ検査を毎回・例外なく実行する。モデルが協力しなくても動く。<span class="ref">[9]</span></div>
+    <div class="chips"><span class="chip d">.github/hooks/*.json</span><span class="chip d">CIゲート</span></div>
+  </div>
+  <div class="actor" style="border-left-color:var(--navy)">
+    <div class="nm">まず覚える3語</div>
+    <div class="do" style="margin-bottom:2px"><b>ハーネス</b>＝モデル以外の全部（指示・ツール・権限・検査）。エージェント＝モデル＋ハーネス <span class="ref">[3]</span></div>
+    <div class="do" style="margin-bottom:2px"><b style="color:var(--nd-ink)">ガイド</b>＝動く前に渡す制約（①）　<b style="color:var(--d-ink)">センサー</b>＝動いた後に測る制約（②）</div>
+    <div class="do" style="margin:0">どちらか片方では足りない：ガイドだけだと検証できず、センサーだけだと同じ失敗を繰り返す <span class="ref">[3]</span></div>
+  </div>
+  <div class="newjob"><b>途中導入で増える仕事：</b>コードを書くことより「環境の設計・意図の明示・フィードバックループ構築」。OpenAIの実験でも初期の遅れの原因はモデル能力ではなく環境の定義不足だった <span class="ref">[5]</span></div>
+</div>
+
+<!-- ===== 中央：引き算の主図 ===== -->
+<div class="funnel">
+  <div class="col-title">制御の全体像 <small>出力空間から順に引いていく（上ほど広く、下ほど狭い）</small></div>
+
+  <div class="stage s0">
+    <div class="hd"><span class="t">モデルの出力空間</span><span class="s">公開データ上の“よくある正解”。このリポジトリのスタック・業務・過去の意思決定は知らない</span></div>
+    <div class="seeds">
+      <div class="seed"><b>a</b>世間で最頻のFW・ライブラリを選ぶ</div>
+      <div class="seed"><b>b</b>一般語で命名（同義語が乱立）</div>
+      <div class="seed"><b>c</b>教科書的な業務順序で実装</div>
+      <div class="seed"><b>d</b>過去に却下した設計を再提案</div>
+      <div class="seed"><b>e</b>実在しない/未承認パッケージを import</div>
+    </div>
+  </div>
+  <div class="down"><i>▼</i></div>
+
+  <div class="stage s1">
+    <div class="hd"><span class="op">−</span><span class="t">① 非決定論的制約（ガイド / フィードフォワード）</span><span class="s">コンテキストに載せて確率を寄せる。守られる“可能性が上がる”だけ <span class="ref">[1][2][3]</span></span></div>
+    <table class="it">
+      <tr><th>要素</th><th>引くもの</th><th>置き場所</th><th>主な書き手</th><th>②への昇格先</th></tr>
+      <tr><td>技術スタック宣言</td><td><span class="tag">a</span>未採用の言語・FW・ライブラリ</td><td><code>.github/copilot-instructions.md</code><br><code>AGENTS.md</code>（目次として短く）</td><td>アーキテクト</td><td><span class="promo">依存許可リスト・Linter</span></td></tr>
+      <tr><td>ドメイン用語集</td><td><span class="tag">b</span>勝手な命名・同義語</td><td><code>docs/glossary.md</code>（instructionsからリンク）</td><td>ドメイン担当</td><td><span class="promo">命名Lint・型名</span></td></tr>
+      <tr><td>業務フロー・仕様</td><td><span class="tag">c</span>業務上ありえない順序・例外の無視</td><td><code>specs/&lt;機能&gt;/spec.md</code><br><code>.specify/memory/constitution.md</code><span class="ref">[4][6]</span></td><td>PO・開発者</td><td><span class="promo">受入テスト</span></td></tr>
+      <tr><td>ADR</td><td><span class="tag">d</span>却下済み案・理由なき方針変更</td><td><code>docs/adr/NNNN-*.md</code>（コードと同じリポジトリ）<span class="ref">[20]</span></td><td>アーキテクト</td><td><span class="promo">アーキテクチャテスト</span></td></tr>
+      <tr><td>参照実装・Skills</td><td>社内規約から外れた書き方</td><td><code>.github/skills/&lt;名前&gt;/SKILL.md</code><br><code>.github/instructions/*.instructions.md</code>（applyToで範囲限定）<span class="ref">[8][10]</span></td><td>テックリード</td><td><span class="promo">Formatter・Linter</span></td></tr>
+    </table>
+    <div class="badge">⚠ 足しすぎは逆効果：LLM生成のコンテキストファイルはタスク成功率を下げ推論コストを20%超押し上げた。人が書く最小限の要件だけ載せる <span class="ref">[12]</span>／長い文脈の中ほどは使われにくい <span class="ref">[13]</span></div>
+  </div>
+  <div class="down"><i>▼</i>寄せられた“候補”。まだ確率的</div>
+
+  <div class="stage s2">
+    <div class="hd"><span class="op">−</span><span class="t">② 決定論的制約（センサー・ゲート / フィードバック）</span><span class="s">機械が毎回判定し、違反を遮断・差し戻す <span class="ref">[11][9][3]</span></span></div>
+    <table class="it">
+      <tr><th>要素</th><th>弾くもの</th><th>置き場所</th><th>タイミング</th><th>違反時</th></tr>
+      <tr><td>権限・サンドボックス</td><td>許可外のコマンド・ファイル・ネットワーク</td><td><code>.github/workflows/copilot-setup-steps.yml</code>（permissions）＋ファイアウォール<span class="ref">[11]</span></td><td>実行前</td><td>実行不可</td></tr>
+      <tr><td>Hooks</td><td>禁止操作、編集ごとの整形・静的検査漏れ</td><td><code>.github/hooks/*.json</code>（preToolUse / postToolUse）<span class="ref">[9]</span></td><td>ツール実行前後</td><td>遮断／AIへ返す</td></tr>
+      <tr><td>型・コンパイラ</td><td>存在しないAPI・型不整合</td><td>ビルド設定（例：<code>tsconfig.json</code>）</td><td>編集直後</td><td>AIが修正</td></tr>
+      <tr><td>Linter・アーキテクチャテスト</td><td><span class="tag">a</span><span class="tag">d</span>層違反・依存方向違反（＝ADRの機械化）</td><td>Lint設定・<code>tests/architecture/</code></td><td>コミット前・CI</td><td>マージ不可</td></tr>
+      <tr><td>テスト・受入テスト</td><td><span class="tag">b</span><span class="tag">c</span>業務ルール違反（＝用語集・業務フローの機械化）</td><td><code>.github/workflows/*.yml</code>（必須チェック）</td><td>CI</td><td>マージ不可</td></tr>
+      <tr><td>依存許可リスト・SCA</td><td><span class="tag">e</span>架空・未承認パッケージ（slopsquatting）<span class="ref">[14]</span></td><td>dependency-reviewワークフロー</td><td>CI</td><td>マージ不可</td></tr>
+    </table>
+    <div class="badge">原則：① に書いたルールのうち<b>機械判定できるものは ② に昇格</b>させる。①は文脈が埋まるほど効きが落ちるが、②は毎回確実に走る <span class="ref">[9][3]</span></div>
+  </div>
+  <div class="down"><i>▼</i>機械検査を通過した出力</div>
+
+  <div class="stage s3">
+    <div class="hd"><span class="op">−</span><span class="t">③ 人の判断</span><span class="s">機械では判定できない残差だけを見る <span class="ref">[3][7]</span></span></div>
+    <div class="row">
+      <div><b>意図との一致</b><br>頼んだ問題を解いているか</div>
+      <div><b>テストの妥当性</b><br>AIが書いたテストが“誤った振る舞い”を検証していないか</div>
+      <div><b>設計判断</b><br>新しいADRが必要な判断か</div>
+      <div><b>レビュー必須化</b><br><code>.github/CODEOWNERS</code>＋ブランチ保護</div>
+    </div>
+  </div>
+  <div class="out">マージ可能な変更 <span>＝ モデル出力 − ① − ② − ③</span></div>
+
+  <div class="loop"></div>
+  <div class="looplab">同じ失敗が2回 → 制約を追加・昇格</div>
+</div>
+
+<!-- ===== 右：途中導入の手順 ===== -->
+<div>
+  <div class="col-title">途中導入の進め方 <small>既存資産の上に積む順番</small></div>
+  <div class="step"><div class="no ai">0<br>計測</div><div>
+    <div class="t">導入前の基準値を取る</div>
+    <div class="x">リードタイム・変更失敗率・重複/書き直しの量を測る。体感の“速くなった”は当てにならない。</div>
+    <div class="w">根拠：METRの体感と実測の逆転、DORAの安定性低下 <span class="ref">[15][16][17]</span></div></div></div>
+  <div class="step"><div class="no nd">1<br>発掘</div><div>
+    <div class="t">暗黙知を掘り起こして①の素材にする</div>
+    <div class="x">既存コードとベテランの頭の中から用語・業務ルール・過去の判断を抽出し、用語集とADRの下書きにする。AIは“書く”より先に“読む”で使う。</div>
+    <div class="w">根拠：レガシー理解へのLLM＋AST活用 <span class="ref">[19]</span>、暗黙の文脈が熟練者の減速要因 <span class="ref">[15]</span></div></div></div>
+  <div class="step"><div class="no d">2<br>門番</div><div>
+    <div class="t">②の決定論ゲートを先に固める</div>
+    <div class="x">既存のCI・型・テストをAIの作業ループにhooksで直結。実行環境の権限・ネットワーク制限と依存チェックを先に入れる。</div>
+    <div class="w">根拠：AIは組織の強みも弱みも増幅する <span class="ref">[16]</span>、無人実行ではpreToolUseの“ask”は拒否扱い＝人がいなくても止まる <span class="ref">[9]</span></div></div></div>
+  <div class="step"><div class="no nd">3<br>最小化</div><div>
+    <div class="t">①は“目次”として最小限に書く</div>
+    <div class="x"><code>copilot-instructions.md</code>・<code>AGENTS.md</code> は百科事典ではなく目次。詳細は <code>*.instructions.md</code>（applyTo）・用語集・ADR・specに分け、必要時にだけ読ませる。</div>
+    <div class="w">根拠：巨大な指示書は腐る <span class="ref">[5]</span>、不要な要件は成功率を下げる <span class="ref">[12]</span>、必要時に取得 <span class="ref">[1]</span></div></div></div>
+  <div class="step"><div class="no h">4<br>小さく</div><div>
+    <div class="t">検証しやすい定型タスクから広げる</div>
+    <div class="x">移行・テスト追加・定型リファクタなど、②で合否が決まるタスクから始め、人のレビュー負荷を見ながら範囲を広げる。</div>
+    <div class="w">根拠：Googleの移行事例（ビルド・テストで検証→人がレビュー）<span class="ref">[18]</span></div></div></div>
+  <div class="step"><div class="no fb">5<br>循環</div><div>
+    <div class="t">ステアリングループを回す</div>
+    <div class="x">指示不足ならガイド追加、出力後にしか分からない失敗ならセンサー追加、次工程に流してはいけないならゲート追加。古いADRは更新を許可する。</div>
+    <div class="w">根拠：ハーネスは失敗から育てる <span class="ref">[3]</span>、ADRに過剰適合する問題 <span class="ref">[20]</span></div></div></div>
+  <div class="newjob" style="font-size:12.8px;line-height:1.5">
+    <b>途中導入でよくある失敗 → 対応するSTEP</b><br>
+    ・instructionsファイルを自動生成して放置し、文脈だけ肥大化 → <b>STEP3</b> <span class="ref">[12]</span><br>
+    ・ゲート未整備のままAI利用を全面展開し、障害が増える → <b>STEP2</b> <span class="ref">[16]</span><br>
+    ・陳腐化したADRをAIが死守し、改善が止まる → <b>STEP5</b> <span class="ref">[20]</span><br>
+    ・「速くなった気がする」で投資判断する → <b>STEP0</b> <span class="ref">[15]</span><br>
+    ・既存コードを読ませず一般論で新規実装させる → <b>STEP1</b> <span class="ref">[19]</span>
+  </div>
+</div>
+</div>
+
+<!-- ===== 下段 ===== -->
+<div class="bottom">
+  <div class="card">
+    <h3>① と ② は何が違うか</h3>
+    <table class="cmp">
+      <thead><tr><th class="c1"></th><th class="nd">① 非決定論的制約（ガイド）</th><th class="d">② 決定論的制約（センサー・ゲート）</th></tr></thead>
+      <tr><th class="c1">効き方</th><td>生成前に文脈で確率を寄せる</td><td>生成後・実行前に機械で合否判定</td></tr>
+      <tr><th class="c1">違反したら</th><td>気づかれないまま通ることがある</td><td>必ず止まる／AIに差し戻される</td></tr>
+      <tr><th class="c1">弱る要因</th><td>文脈の肥大化・情報の位置・陳腐化</td><td>検査の網羅不足（書いていないことは見ない）</td></tr>
+      <tr><th class="c1">得意な内容</th><td>理由・意図・トレードオフ・用語の意味</td><td>形式・依存・権限・既知の業務ルール</td></tr>
+      <tr><th class="c1">コスト</th><td>書くのは安いが毎回トークンを消費</td><td>作るのは高いが実行は安く確実</td></tr>
+      <tr><th class="c1">代表例</th><td>instructions、用語集、spec、ADR、SKILL.md</td><td>権限、hooks、型、Linter、テスト、必須チェック</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3>そのルールはどの層に置くか</h3>
+    <div class="q"><div class="qq">破られたら事故・情報漏えい・監査指摘になる？</div><div class="ar">→</div><div class="ans d">Yes：② ゲート（実行前に遮断）</div></div>
+    <div class="q"><div class="qq">合否を機械で判定できる？（型・依存・形式・既知の業務ルール）</div><div class="ar">→</div><div class="ans d">Yes：② センサー（テスト・Lint）</div></div>
+    <div class="q"><div class="qq">理由や文脈の理解が要る？（設計意図・用語のニュアンス）</div><div class="ar">→</div><div class="ans nd">Yes：① ガイド（最小限で記述）</div></div>
+    <div class="q"><div class="qq">機械にも文脈にも落ちない？（意図との一致・テストの妥当性）</div><div class="ar">→</div><div class="ans h">③ 人のレビュー対象として明示</div></div>
+    <div class="q"><div class="qq">同じ失敗が2回起きた？</div><div class="ar">→</div><div class="ans fb">上の判定をやり直し、層を上げる</div></div>
+  </div>
+  <div class="card">
+    <h3>なぜ“引き算の設計”が要るのか ― 根拠</h3>
+    <table class="ev">
+      <tr><th>出典</th><th>観測された事実</th><th>制御設計への含意</th></tr>
+      <tr><td class="k">METR 2025 <span class="ref">[15]</span></td><td>熟練OSS開発者16名・246タスクのRCT。事前予測は24%短縮、実測は19%増加</td><td class="i">体感で判断せず計測する（STEP0）</td></tr>
+      <tr><td class="k">DORA 2025 <span class="ref">[16]</span></td><td>約5,000人調査。AIは増幅器。スループットとは正、安定性とは負の関係</td><td class="i">②の土台が弱いと不安定さが増幅</td></tr>
+      <tr><td class="k">GitClear 2025 <span class="ref">[17]</span></td><td>2020〜24年・2.11億行の変更分析で、コピペ行が増え、移動（＝リファクタ）行が減少</td><td class="i">①②で既存パターンへの準拠を強制</td></tr>
+      <tr><td class="k">AGENTS.md評価 <span class="ref">[12]</span></td><td>LLM生成のコンテキストファイルは成功率低下・コスト20%超増。人手の最小限は僅かに改善</td><td class="i">①は足し算でなく最小限</td></tr>
+      <tr><td class="k">パッケージ幻覚 <span class="ref">[14]</span></td><td>16モデル・57.6万件の生成コードのうち、架空パッケージを含む割合は平均約2割</td><td class="i">依存は②の許可リストで機械判定</td></tr>
+      <tr><td class="k">Google移行 <span class="ref">[18]</span></td><td>12か月・39移行でコード変更の約74%をLLMが生成、所要時間は推定50%減</td><td class="i">②の自動検証＋③レビューで任せられる</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="src">
+<div><b>[1]</b> Anthropic「Effective context engineering for AI agents」2025-09</div>
+<div><b>[2]</b> B. Böckeler「Context Engineering for Coding Agents」martinfowler.com 2026-02</div>
+<div><b>[3]</b> B. Böckeler「Harness Engineering for Coding Agent Users」martinfowler.com 2026-04</div>
+<div><b>[4]</b> B. Böckeler「Understanding Spec-Driven-Development: Kiro, spec-kit, and Tessl」martinfowler.com</div>
+<div><b>[5]</b> OpenAI「Harness engineering: leveraging Codex in an agent-first world」2026</div>
+<div><b>[6]</b> Microsoft DevBlogs「Diving Into Spec-Driven Development With GitHub Spec Kit」2025-09</div>
+<div><b>[7]</b> AWS「AI-Driven Development Life Cycle: Reimagining Software Engineering」</div>
+<div><b>[8]</b> GitHub Docs「Adding custom instructions」</div>
+<div><b>[9]</b> GitHub Docs「Hooks reference」</div>
+<div><b>[10]</b> GitHub Docs「Creating skills」</div>
+<div><b>[11]</b> GitHub Docs「Customizing the agent's development environment」</div>
+<div><b>[12]</b> Gloaguen et al.「Evaluating AGENTS.md」arXiv:2602.11988 / ICLR 2026</div>
+<div><b>[13]</b> Liu et al.「Lost in the Middle: How Language Models Use Long Contexts」TACL 2024</div>
+<div><b>[14]</b> Spracklen et al.「We Have a Package for You!」arXiv:2406.10279</div>
+<div><b>[15]</b> METR「Measuring the Impact of Early-2025 AI on Experienced OSS Developer Productivity」2025-07</div>
+<div><b>[16]</b> DORA / Google「2025 State of AI-assisted Software Development」</div>
+<div><b>[17]</b> GitClear「AI Copilot Code Quality 2025」</div>
+<div><b>[18]</b> Ziftci et al.「Migrating Code At Scale With LLMs At Google」FSE 2025</div>
+<div><b>[19]</b> Thoughtworks「Legacy Modernization meets GenAI」martinfowler.com</div>
+<div><b>[20]</b> D. Davidson「Coding agents love decision records」（実務者の観察）</div>
+<div><b>[21]</b> understandingdata「The Domain Glossary Is a Constraint, Not Documentation」（実務者の観察）</div>
+</div>
+<div class="foot">※ ①②③の区分は Böckeler のガイド（フィードフォワード）／センサー（フィードバック）の整理 [3] を、引き算モデルとして再構成したもの。数値は各出典の調査条件・時点に依存する。</div>
+</div></body></html>

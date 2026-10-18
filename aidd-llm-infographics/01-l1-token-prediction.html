@@ -1,0 +1,215 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>:root{
+  --bg:#f7f8fb; --paper:#fff; --ink:#1f2330; --sub:#5a6070; --line:#d5d9e4; --navy:#112274;
+  --m-bg:#eceef3; --m-ink:#3d4250; --m-line:#9aa1b2;      /* モデル内部 */
+  --p-bg:#dfe7fb; --p-ink:#123a8f; --p-line:#8eaae8;      /* 確率的 */
+  --d-bg:#e2f3e8; --d-ink:#1b6337; --d-line:#5fa77a;      /* 決定論 */
+  --h-bg:#fbefc7; --h-ink:#6b4f00; --h-line:#d9b23e;      /* 設計判断・人 */
+  --r-bg:#efe6fb; --r-ink:#5b2e9c; --r-line:#a882d8;      /* 注意・落とし穴 */
+}
+html,body{margin:0}
+body{width:1920px;overflow:hidden;background:var(--bg);color:var(--ink);
+  font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",sans-serif;font-size:14px;line-height:1.45}
+.wrap{padding:22px 36px 18px}
+.ladder{display:flex;gap:6px;justify-content:center;margin-bottom:12px}
+.ladder div{padding:4px 14px;border-radius:16px;font-size:13px;border:1.5px solid var(--line);background:#fff;color:var(--sub)}
+.ladder div.on{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:700}
+.ladder span{align-self:center;color:var(--sub)}
+h1{margin:0;text-align:center;font-size:31px;color:var(--navy);letter-spacing:.01em}
+.rule{height:3px;background:var(--navy);width:180px;margin:10px auto}
+.lead{text-align:center;font-size:16.5px;margin:0 0 10px}
+.legend{display:flex;justify-content:center;gap:24px;font-size:13.5px;color:var(--sub);margin-bottom:14px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:16px;height:16px;border-radius:3px;display:inline-block;border:2.5px solid}
+.sw.m{background:var(--m-bg);border-color:var(--m-line)} .sw.p{background:var(--p-bg);border-color:var(--p-line)}
+.sw.d{background:var(--d-bg);border-color:var(--d-line)} .sw.h{background:var(--h-bg);border-color:var(--h-line)}
+.sw.r{background:var(--r-bg);border-color:var(--r-line)}
+.sec{font-size:19px;font-weight:700;color:var(--navy);margin:0 0 8px;display:flex;align-items:baseline;gap:8px}
+.sec small{font-size:12.5px;color:var(--sub);font-weight:400}
+.ref{font-size:11px;color:var(--sub);font-weight:400}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 14px 12px}
+.card h3{margin:0 0 6px;font-size:16.5px;color:var(--navy)}
+.box{border-radius:10px;border:2px solid;padding:9px 12px}
+.box.m{background:var(--m-bg);border-color:var(--m-line)} .box.p{background:var(--p-bg);border-color:var(--p-line)}
+.box.d{background:var(--d-bg);border-color:var(--d-line)} .box.h{background:var(--h-bg);border-color:var(--h-line)}
+.box.r{background:var(--r-bg);border-color:var(--r-line)}
+.box .t{font-weight:700;font-size:15.5px}
+.box.m .t{color:var(--m-ink)} .box.p .t{color:var(--p-ink)} .box.d .t{color:var(--d-ink)} .box.h .t{color:var(--h-ink)} .box.r .t{color:var(--r-ink)}
+.no{display:inline-block;min-width:22px;height:22px;line-height:22px;border-radius:50%;text-align:center;color:#fff;background:var(--navy);font-weight:700;font-size:12.5px;margin-right:6px}
+.chip{font-size:12px;padding:1px 8px;border-radius:12px;border:1.3px solid;white-space:nowrap;display:inline-block;margin:1px 2px}
+.chip.p{background:var(--p-bg);border-color:var(--p-line);color:var(--p-ink)}
+.chip.d{background:var(--d-bg);border-color:var(--d-line);color:var(--d-ink)}
+.chip.m{background:var(--m-bg);border-color:var(--m-line);color:var(--m-ink)}
+.chip.h{background:var(--h-bg);border-color:var(--h-line);color:var(--h-ink)}
+.chip.r{background:var(--r-bg);border-color:var(--r-line);color:var(--r-ink)}
+.l0{border:1.5px dashed var(--navy);background:#eef0f9;border-radius:7px;padding:5px 9px;font-size:12.8px;color:var(--navy);margin-top:6px}
+.l0 b{font-weight:800}
+.warn{border:1.5px dashed var(--r-line);background:var(--r-bg);color:var(--r-ink);border-radius:7px;padding:5px 9px;font-size:12.8px}
+code{font-family:"DejaVu Sans Mono",monospace;font-size:11.5px;background:#f1f3f8;border:1px solid #e0e4ee;border-radius:4px;padding:0 4px;white-space:nowrap}
+table.tb{width:100%;border-collapse:collapse;font-size:12.8px}
+table.tb th{text-align:left;font-size:12px;color:var(--sub);font-weight:600;border-bottom:1.5px solid var(--line);padding:3px 6px}
+table.tb td{border-bottom:1px solid #e6e8ef;padding:4px 6px;vertical-align:top}
+table.tb td.k{font-weight:700;white-space:nowrap}
+.arrow{color:var(--navy);font-weight:800;font-size:22px;text-align:center;align-self:center}
+.src{margin-top:12px;font-size:11.5px;color:#6a6f7d;columns:3;column-gap:24px;line-height:1.5}
+.src div{break-inside:avoid} .src b{color:#444}
+.foot{font-size:11.5px;color:#6a6f7d;margin-top:4px}
+.sw.l0{background:#eef0f9;border:2px dashed var(--navy)}
+
+
+.pipe{display:grid;grid-template-columns:1fr 26px 1fr 26px 1.25fr 26px 1fr 26px 1fr 26px 1fr;align-items:stretch}
+.pipe .box{display:flex;flex-direction:column}
+.pipe .box .d{font-size:13px;margin-top:3px;flex:1}
+.pipe .box .eg{font-size:12px;color:var(--sub);border-top:1px dashed var(--line);margin-top:6px;padding-top:4px}
+.loop{margin:6px 0 0;border:2px solid var(--navy);border-top:none;border-radius:0 0 14px 14px;height:16px;position:relative;margin-left:8%;margin-right:8%}
+.loop:after{content:"▲";position:absolute;left:-9px;top:-14px;color:var(--navy);font-size:14px}
+.looplab{text-align:center;font-size:13.5px;color:var(--navy);font-weight:700;margin-top:3px}
+.ex{display:grid;grid-template-columns:330px 1fr 1fr;gap:16px;margin-top:12px}
+.tok{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.tok span{border:1.5px solid var(--m-line);background:#fff;border-radius:5px;padding:1px 7px;font-size:14px}
+.tok span i{font-style:normal;font-size:10.5px;color:var(--sub);margin-left:3px}
+.bars{font-size:12.8px}
+.bar{display:grid;grid-template-columns:62px 1fr 44px;align-items:center;gap:6px;margin:3px 0}
+.bar .b{height:13px;border-radius:3px;background:var(--p-line)}
+.bar.pick .b{background:var(--p-ink)} .bar.pick span:first-child{font-weight:800;color:var(--p-ink)}
+.mid{display:grid;grid-template-columns:520px 1fr 1fr 1fr;gap:16px;margin-top:16px}
+.wc{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.wc .box{padding:7px 10px}
+.wc ul{margin:4px 0 0;padding-left:17px;font-size:12.8px}
+.cons .row{font-size:13px;margin:4px 0}
+.cons .lab{display:inline-block;font-size:11.5px;font-weight:700;border-radius:4px;padding:0 6px;margin-right:4px;color:#fff}
+.lab.mech{background:#7c8396}.lab.res{background:#3d64c4}
+.bot{display:grid;grid-template-columns:1fr 520px;gap:16px;margin-top:16px}
+
+body{height:1414px}</style></head><body><div class="wrap">
+<div class="ladder"><div>L0 用語と引き算モデル</div><span>›</span><div class="on">L1 モデルの中で何が起きているか</div><span>›</span><div>L2 コンテキストは誰が組み立てるか</div><span>›</span><div>L3 ローカルLLMでハーネスを自作する</div></div>
+<h1>LLMは命令を「実行」していない ― 文脈を条件に次の1トークンの確率を計算し、1つ選ぶことを繰り返している</h1>
+<div class="rule"></div>
+<p class="lead">この1つの仕組みから、「出力は毎回ゆらぐ」「書かれていないことは一般論で埋める」「指示は守られやすくなるだけ」という3つの性質が出てくる。<b>引き算モデルの①が“確率を寄せるだけ”である根拠</b>はここにある。</p>
+<div class="legend">
+  <span><i class="sw m"></i>決まった計算（重みは固定、同じ入力なら同じ数値になるのが原則）</span>
+  <span><i class="sw p"></i>確率が入る箇所（どれを選ぶかに揺らぎがある）</span>
+  <span><i class="sw r"></i>そこから生じる性質・落とし穴</span>
+  <span><i class="sw l0"></i>L0（引き算モデル）への接続</span>
+  <span><i class="sw h"></i>次のレベルへの問い</span>
+</div>
+
+<div class="sec">1回の応答の中身 <small>テキストが入ってから1トークンが出るまで。これを応答の長さの分だけ繰り返す</small></div>
+<div class="pipe">
+  <div class="box m"><div class="t"><span class="no">1</span>トークン化</div><div class="d">文章を「トークン」という部品に分け、番号（ID）に変える。単語より細かい単位で、頻出の並びほど1トークンにまとまる（BPE）<span class="ref">[2]</span></div><div class="eg">日本語は1文字が複数トークンになりやすく、同じ内容でも英語よりトークン数が増える傾向 <span class="ref">[3]</span></div></div>
+  <div class="arrow">→</div>
+  <div class="box m"><div class="t"><span class="no">2</span>埋め込み</div><div class="d">各IDを数千次元の数値ベクトルに置き換える。意味の近い語は近いベクトルになるよう学習されている</div><div class="eg">ここから先はすべて数値の計算</div></div>
+  <div class="arrow">→</div>
+  <div class="box m"><div class="t"><span class="no">3</span>Transformer層 × 数十段</div><div class="d">自己注意（attention）で、各トークンが文脈中の他の全トークンを参照し、情報を混ぜ合わせる。これを何十層も重ねる <span class="ref">[1]</span></div><div class="eg">内部では韻を踏む語を先に決めてから行を組み立てるなど、数語先を見越した計算も観察されている <span class="ref">[9]</span></div></div>
+  <div class="arrow">→</div>
+  <div class="box p"><div class="t"><span class="no">4</span>次トークンの確率分布</div><div class="d">語彙（数万〜十数万種）の全トークンについて「次に来る確率」を出す。答えは1つではなく分布として出てくる</div><div class="eg">モデル本体の出力はここまで。文章はまだできていない</div></div>
+  <div class="arrow">→</div>
+  <div class="box p"><div class="t"><span class="no">5</span>デコード（選択）</div><div class="d">分布から1つ選ぶ。temperature（分布の尖り具合）とtop-p（上位の何割から選ぶか）で揺らぎを調整する</div><div class="eg">常に最大確率を選ぶと単調な繰り返しになりやすい <span class="ref">[6]</span></div></div>
+  <div class="arrow">→</div>
+  <div class="box m"><div class="t"><span class="no">6</span>文脈に追記</div><div class="d">選んだ1トークンを入力の末尾に足し、①〜⑤をもう一度実行する（自己回帰）。終了トークンが出たら止まる</div><div class="eg">長い回答＝この繰り返しが何百回も起きている</div></div>
+</div>
+<div class="loop"></div>
+<div class="looplab">⑥ → ① に戻る：1トークンずつ、毎回「それまでの全文脈」を条件にして次を選ぶ</div>
+
+<div class="ex">
+  <div class="card"><h3>例：入力がトークンになる</h3>
+    <div style="font-size:13px">「顧客の請求書を」</div>
+    <div class="tok"><span>顧客</span><span>の</span><span>請求</span><span>書</span><span>を</span></div>
+    <div style="font-size:12px;color:var(--sub);margin-top:6px">※分け方は模式図。実際の分割はモデルのトークナイザによって異なる。料金と文脈の上限は文字数ではなくトークン数で決まる</div>
+  </div>
+  <div class="card"><h3>例：④で出る分布（数値は説明用の仮のもの）</h3>
+    <div class="bars">
+      <div class="bar pick"><span>発行</span><div class="b" style="width:68%"></div><span>0.34</span></div>
+      <div class="bar"><span>作成</span><div class="b" style="width:42%"></div><span>0.21</span></div>
+      <div class="bar"><span>送付</span><div class="b" style="width:24%"></div><span>0.12</span></div>
+      <div class="bar"><span>確認</span><div class="b" style="width:16%"></div><span>0.08</span></div>
+      <div class="bar"><span>その他</span><div class="b" style="width:50%;background:#c8cfdd"></div><span>0.25</span></div>
+    </div>
+    <div style="font-size:12.5px;margin-top:4px">「発行」が最も確率が高いが、他の候補にも確率が残っている。<b>どれが選ばれるかは⑤次第</b></div>
+  </div>
+  <div class="card"><h3>例：⑤の設定で選ばれ方が変わる</h3>
+    <table class="tb">
+      <tr><th>設定</th><th>分布の形</th><th>結果</th></tr>
+      <tr><td class="k">temperature 低</td><td>上位に集中（尖る）</td><td>ほぼ毎回「発行」。ただし完全一致は保証されない（→ 性質A）</td></tr>
+      <tr><td class="k">temperature 高</td><td>平らになる</td><td>「送付」「確認」なども選ばれ、表現が多様になる</td></tr>
+      <tr><td class="k">top-p 0.9</td><td>累積90%までに候補を限定</td><td>確率の低い“外れ”を足切りしつつ多様性を残す <span class="ref">[6]</span></td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="mid">
+  <div class="card">
+    <h3>モデルが知っていること ＝ 重み ＋ 今回の文脈</h3>
+    <div class="wc">
+      <div class="box m"><div class="t" style="font-size:14.5px">重み（学習時に固定）</div>
+        <ul>
+          <li><b>事前学習</b>：大量のテキストで「次のトークン予測」を繰り返し、言語と世界の統計を覚える</li>
+          <li><b>事後学習</b>：人の手本と評価で、指示に従う応答が出やすいよう調整（RLHF）。この調整をした1.3Bモデルの出力が、調整なしの175Bより好まれた <span class="ref">[5]</span></li>
+          <li>使っている間は<b>一切変わらない</b></li>
+        </ul></div>
+      <div class="box p"><div class="t" style="font-size:14.5px">文脈（毎回渡す入力）</div>
+        <ul>
+          <li>プロンプト、指示ファイル、会話履歴、ファイル内容などが<b>1本のトークン列</b>として渡される</li>
+          <li>重みを変えなくても、文脈に例を置くだけで振る舞いが変わる（文脈内学習）<span class="ref">[4]</span></li>
+          <li>モデル自身は前回の会話を覚えていない。毎回、渡された文脈を頭から処理する</li>
+        </ul></div>
+    </div>
+    <div class="l0"><b>L0への接続：</b>このリポジトリ固有の事情（スタック・用語・過去の判断）は重みに入っていない。<b>入れられる場所は文脈だけ</b> → だから①（ガイド）が必要になる</div>
+  </div>
+
+  <div class="card cons"><h3>性質A：出力は毎回ゆらぐ</h3>
+    <div class="row"><span class="lab mech">仕組み</span>④は分布、⑤はそこからの選択。少しでも違うトークンが選ばれると、⑥以降の文脈が変わり、差が広がる</div>
+    <div class="row"><span class="lab res">事実</span>temperature 0（常に最大確率を選ぶ設定）でも一致しないことがある。推論サーバが他のリクエストとまとめて計算する際の“まとめ方”で数値がわずかに変わるため。同一プロンプト1,000回で80通りの出力が出た例がある <span class="ref">[7]</span></div>
+    <div class="warn" style="margin-top:6px">「同じ指示を渡せば同じ結果」は前提にできない</div>
+    <div class="l0"><b>L0への接続：</b>①は確率を寄せるだけ。<b>必ず守らせたいものは②（機械検査）</b>に置く</div>
+  </div>
+
+  <div class="card cons"><h3>性質B：書かれていないことは一般論で埋める</h3>
+    <div class="row"><span class="lab mech">仕組み</span>文脈が決めきらない部分は、学習データで多かった形の確率が高くなる。低頻度の事実は統計から推測できず、もっともらしい誤りになる <span class="ref">[8]</span></div>
+    <div class="row"><span class="lab res">事実</span>正答率だけで採点する評価では「わからない」と答えるより推測した方が得点が上がるため、推測する方向に最適化されやすい <span class="ref">[8]</span>。知っている気がする名前で「知らない」と答える回路が抑制され、作話が起きる例も観察されている <span class="ref">[9]</span></div>
+    <div class="l0"><b>L0への接続：</b>出力空間の「a 最頻のFW」「b 一般語の命名」「e 架空パッケージ」はこの性質の直接の結果</div>
+  </div>
+
+  <div class="card cons"><h3>性質C：指示は「命令」でなく「条件」</h3>
+    <div class="row"><span class="lab mech">仕組み</span>指示もただのトークン列で、④の分布を動かす条件の一つにすぎない。従いやすさは事後学習で身につけた確率的な傾向 <span class="ref">[5]</span></div>
+    <div class="row"><span class="lab res">事実</span>モデルが説明する「自分の考え方」は、内部で実際に行った計算と一致しないことがある（例：足し算の内部処理と説明が異なる）<span class="ref">[9]</span></div>
+    <div class="warn" style="margin-top:6px">AIの「規約に従いました」という自己申告は検証にならない</div>
+    <div class="l0"><b>L0への接続：</b>守れたかどうかの判定は<b>モデルの外</b>（型・テスト・CI）で行う</div>
+  </div>
+</div>
+
+<div class="bot">
+  <div class="card"><h3>L1の用語 ― 一言で何か、どこに効くか</h3>
+    <table class="tb">
+      <tr><th>用語</th><th>一言で</th><th>実務で効く場面</th></tr>
+      <tr><td class="k">トークン</td><td>モデルが扱う文字列の最小単位</td><td>料金・文脈上限・速度はすべてトークン数で決まる</td></tr>
+      <tr><td class="k">自己注意（attention）</td><td>各トークンが他のトークンをどれだけ参照するかの重み付け</td><td>文脈が長いほど参照先が増え、重要な情報が埋もれやすい（→L2）</td></tr>
+      <tr><td class="k">確率分布 / ロジット</td><td>次トークン候補ごとのスコアと、それを確率に直したもの</td><td>出力が1通りに決まらない根本原因</td></tr>
+      <tr><td class="k">temperature / top-p</td><td>分布からの選び方を調整する設定</td><td>下げると揺らぎは減るが、ゼロにはならない</td></tr>
+      <tr><td class="k">自己回帰</td><td>出したトークンを入力に足して次を出す繰り返し</td><td>序盤の小さな違いが後半で大きな違いになる</td></tr>
+      <tr><td class="k">事前学習 / 事後学習</td><td>統計を覚える段階 / 指示に従う振る舞いを付ける段階</td><td>「従いやすい」は性能であって保証ではない</td></tr>
+      <tr><td class="k">文脈内学習</td><td>重みを変えず、文脈に置いた例で振る舞いが変わること</td><td>指示ファイル・参照実装・用語集が効く理由</td></tr>
+    </table>
+  </div>
+  <div class="card"><h3>L1の結論と、L2への問い</h3>
+    <div style="font-size:13.5px;line-height:1.6">
+      モデルにできるのは<b>「渡された文脈を条件に、確率的に続きを書く」ことだけ</b>。リポジトリ固有の知識を届ける手段は文脈しかなく、届けても守られる保証はない。<br>
+      <span class="chip p">文脈で寄せる ＝ ①</span> <span class="chip d">外で判定する ＝ ②</span> という役割分担は、この性質から自然に導かれる。
+    </div>
+    <div class="box h" style="margin-top:10px"><div class="t">→ L2への問い</div>
+      <div style="font-size:13.5px">では、その「文脈」は<b>誰が・どの順で・何を選んで</b>組み立てているのか？ 長い文脈をモデルは均等に読めているのか？ <code>applyTo</code> は誰が判定しているのか？</div></div>
+  </div>
+</div>
+
+<div class="src">
+<div><b>[1]</b> Vaswani et al.「Attention Is All You Need」NeurIPS 2017</div>
+<div><b>[2]</b> Sennrich et al.「Neural Machine Translation of Rare Words with Subword Units」ACL 2016</div>
+<div><b>[3]</b> Petrov et al.「Language Model Tokenizers Introduce Unfairness Between Languages」NeurIPS 2023</div>
+<div><b>[4]</b> Brown et al.「Language Models are Few-Shot Learners」NeurIPS 2020</div>
+<div><b>[5]</b> Ouyang et al.「Training language models to follow instructions with human feedback」NeurIPS 2022</div>
+<div><b>[6]</b> Holtzman et al.「The Curious Case of Neural Text Degeneration」ICLR 2020</div>
+<div><b>[7]</b> H. He / Thinking Machines Lab「Defeating Nondeterminism in LLM Inference」2025-09</div>
+<div><b>[8]</b> Kalai et al. / OpenAI「Why Language Models Hallucinate」2025-09</div>
+<div><b>[9]</b> Anthropic「Tracing the thoughts of a large language model」2025-03</div>
+</div>
+<div class="foot">※ 例示の分布値・トークン分割は説明用の仮のもの。数値は各出典の実験条件（モデル・設定・時点）に依存する。</div>
+</div></body></html>
