@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>【LLM内部回路 上級 / Rank II】なぜ位置外挿で破綻し、どう2層回路が創発するか：RoPE長文脈拡張（PI / NTK / YaRN）と Transformer Circuits・Induction Heads</title>
+<style>
+  :root {
+    --bg: #edf4f0;
+    --paper: #ffffff;
+    --ink-body: #1a2421;
+    --ink-sub: #475952;
+    --gray-line: #cbd5e1;
+
+    /* Deep Forest / Teal Header */
+    --hdr-darkest: #08281b;
+    --hdr-dark: #114c34;
+
+    /* Semantic Palette (matched with Top Legend) */
+    --ext-bg: #e1f5ea;  --ext-ink: #0f5132;  --ext-line: #3da870;  /* 緑: RoPE長文脈拡張 (PI / NTK / YaRN) */
+    --res-bg: #fef5d6;  --res-ink: #704b00;  --res-line: #e0b034;  /* 黄: Residual Stream (線形通信チャネル・基底) */
+    --cir-bg: #e0edff;  --cir-ink: #123a8f;  --cir-line: #689bf2;  /* 青: QK/OV回路分解・仮想重み (Virtual Weights) */
+    --ind-bg: #f1e8fc;  --ind-ink: #4c1d95;  --ind-line: #9b6ee6;  /* 紫: K-Composition と 2層 Induction Head 回路 */
+    --err-bg: #ffeef0;  --err-ink: #9f1239;  --err-line: #f43f5e;  /* 赤: 外挿破綻 (臨界次元OOD・高周波喪失・Outlier) */
+    --obs-bg: #e6f6f8;  --obs-ink: #0e5a6f;  --obs-line: #38a3bd;  /* 水: 内部観測・介入 (Logit Lens / Ablation) */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 2100px;
+    height: 1350px;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink-body);
+    font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .canvas {
+    width: 2100px;
+    padding: 14px 18px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* 1. HEADER & LEGEND */
+  .header-box {
+    background: linear-gradient(135deg, var(--hdr-darkest) 0%, var(--hdr-dark) 100%);
+    color: #ffffff;
+    border-radius: 10px;
+    padding: 12px 20px 10px;
+    border-bottom: 3px solid #34d399;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .rank-chip {
+    background: #34d399;
+    color: #06281b;
+    font-weight: 900;
+    font-size: 13px;
+    padding: 3px 10px;
+    border-radius: 5px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+
+  h1 {
+    font-size: 15.8px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  .scope-pill {
+    background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.35);
+    color: #a7f3d0;
+    font-size: 11.8px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+
+  .lead-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    border-top: 1px solid rgba(255,255,255,0.18);
+    padding-top: 6px;
+    font-size: 12.5px;
+    color: #e2e8f0;
+  }
+
+  .lead-row strong { color: #6ee7b7; }
+
+  .legend-bar {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    background: #ffffff;
+    color: var(--ink-body);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 11.1px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .lg { display: inline-flex; align-items: center; gap: 5px; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  /* 2. MAIN DIAGRAM: TWO-TIER ARCHITECTURE (TIER 1: ROPE EXTENSION, TIER 2: TRANSFORMER CIRCUITS & INDUCTION HEADS) */
+  .main-frame {
+    position: relative;
+    background: var(--paper);
+    border: 2px solid #475952;
+    border-radius: 10px;
+    padding: 16px 14px 12px;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .frame-label {
+    position: absolute;
+    top: -11px;
+    left: 18px;
+    background: var(--paper);
+    padding: 0 10px;
+    font-size: 12.5px;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+    border: 1px solid #64748b;
+    border-radius: 4px;
+  }
+
+  .frame-sub-label {
+    position: absolute;
+    top: -11px;
+    right: 18px;
+    background: var(--ext-bg);
+    color: var(--ext-ink);
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 800;
+    border: 1px solid var(--ext-line);
+    border-radius: 4px;
+  }
+
+  .tier-box {
+    border-radius: 8px;
+    padding: 8px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .tier-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    padding-bottom: 3px;
+    font-weight: 800;
+    font-size: 13px;
+  }
+
+  /* Tier 1 Grid: OOD Failure -> PI -> NTK-aware / NTK-by-parts -> YaRN */
+  .rope-flow {
+    display: grid;
+    grid-template-columns: 480px 26px 435px 26px 535px 26px 1fr;
+    align-items: stretch;
+  }
+
+  /* Tier 2 Grid: Residual Stream -> Single Head QK/OV -> 2-Layer K-Composition Induction Head */
+  .circuit-flow {
+    display: grid;
+    grid-template-columns: 510px 26px 560px 26px 1fr;
+    align-items: stretch;
+  }
+
+  .arrow-mid {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 9.8px;
+    font-weight: 800;
+    color: var(--hdr-dark);
+    text-align: center;
+    line-height: 1.1;
+  }
+
+  .step-card {
+    background: #ffffff;
+    border-radius: 6px;
+    padding: 6px 9px;
+    border: 1px solid rgba(0,0,0,0.13);
+    font-size: 11.3px;
+    line-height: 1.35;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 3px;
+  }
+
+  .step-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 800;
+    font-size: 11.9px;
+  }
+
+  .pill {
+    display: inline-block;
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid #94a3b8;
+    padding: 0px 7px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--ink-body);
+    white-space: nowrap;
+  }
+
+  .pill.p-ext { background: var(--ext-bg); border-color: var(--ext-line); color: var(--ext-ink); }
+  .pill.p-res { background: var(--res-bg); border-color: var(--res-line); color: var(--res-ink); }
+  .pill.p-cir { background: var(--cir-bg); border-color: var(--cir-line); color: var(--cir-ink); }
+  .pill.p-ind { background: var(--ind-bg); border-color: var(--ind-line); color: var(--ind-ink); }
+  .pill.p-err { background: var(--err-bg); border-color: var(--err-line); color: var(--err-ink); }
+  .pill.p-obs { background: var(--obs-bg); border-color: var(--obs-line); color: var(--obs-ink); }
+
+  .math-strip {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-left: 3px solid var(--hdr-dark);
+    border-radius: 4px;
+    padding: 3px 7px;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 10.6px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .code-inline {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    padding: 0 4px;
+    border-radius: 3px;
+    color: #0f172a;
+  }
+
+  /* 3. MIDDLE SECTION: ROPE EXTENSION BENCHMARK TABLE + CIRCUIT COMPOSITION TABLE */
+  .mid-section {
+    display: grid;
+    grid-template-columns: 1fr 820px;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .panel {
+    background: var(--paper);
+    border: 1px solid var(--gray-line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .panel-title {
+    font-size: 12.5px;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+    border-bottom: 1.5px solid #e2e8f0;
+    padding-bottom: 3px;
+    margin-bottom: 2px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-title span.sub {
+    font-size: 10.6px;
+    font-weight: 600;
+    color: var(--ink-sub);
+  }
+
+  .norm-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .norm-table th, .norm-table td {
+    border: 1px solid #cbd5e1;
+    padding: 4.2px 6.5px;
+    text-align: left;
+    vertical-align: top;
+    line-height: 1.33;
+  }
+
+  .norm-table th {
+    background: #f1f5f9;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+  }
+
+  /* 4. BOTTOM SECTION: 6 MINI-CARDS + 3-WAY DEFINITION BAND */
+  .mini-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+  }
+
+  .mini-card {
+    background: var(--paper);
+    border: 1px solid var(--gray-line);
+    border-left: 4px solid var(--cir-ink);
+    border-radius: 6px;
+    padding: 6px 9px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 3px;
+  }
+
+  .mini-card-title {
+    font-size: 11.9px;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .mini-card-body {
+    font-size: 10.8px;
+    color: var(--ink-body);
+    line-height: 1.33;
+  }
+
+  .mini-card-foot {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--ink-sub);
+    border-top: 1px dashed #e2e8f0;
+    padding-top: 2px;
+  }
+
+  .def-band {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .def-card {
+    background: var(--paper);
+    border: 1px solid var(--gray-line);
+    border-top: 3px solid var(--hdr-dark);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    line-height: 1.34;
+  }
+
+  .def-card-title {
+    font-size: 11.9px;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+    margin-bottom: 2px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-note {
+    font-size: 10.8px;
+    color: var(--ink-sub);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 4px;
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- ==================== 1. HEADER & LEGEND ==================== -->
+  <header class="header-box">
+    <div class="header-top">
+      <div class="title-wrap">
+        <span class="rank-chip">LLM内部回路 上級 / Rank II</span>
+        <h1>長文脈外挿の破綻は「臨界次元以降の未学習角度と高周波喪失」で起き、内部では「Residual Stream上のK-Composition」が2層でInduction Headを創発させる</h1>
+      </div>
+      <div class="scope-pill">対象：②RoPE長文脈拡張（PI / NTK / YaRN）→ ③Transformer Circuits・Residual Stream・Induction Heads</div>
+    </div>
+    <div class="lead-row">
+      <div>
+        <strong>上級の核心結論：</strong>RoPEを全次元一律に縮めるPIは高周波（局所トークン識別能）を破壊するため、<strong>波長別のNTK-by-parts補間＋Softmax温度調整（YaRN）</strong>が不可欠［Peng+ 2024］。そしてAttention層は単なる重み付き平均ではなく、<strong>残差ストリームの部分空間を介した第1層・第2層の行列合成（K-Composition）</strong>によって文脈コピー回路「Induction Head」を形成する［Elhage+ 2021］。
+      </div>
+      <div class="legend-bar">
+        <span class="lg"><span class="sw" style="background:var(--ext-line);"></span>RoPE長文脈拡張 (PI/NTK/YaRN)</span>
+        <span class="lg"><span class="sw" style="background:var(--res-line);"></span>Residual Stream (通信チャネル)</span>
+        <span class="lg"><span class="sw" style="background:var(--cir-line);"></span>QK/OV回路分解・仮想重み</span>
+        <span class="lg"><span class="sw" style="background:var(--ind-line);"></span>K-Composition &amp; Induction Head</span>
+        <span class="lg"><span class="sw" style="background:var(--err-line);"></span>外挿破綻・高周波喪失・Outlier</span>
+        <span class="lg"><span class="sw" style="background:var(--obs-line);"></span>内部観測 (Logit Lens / Ablation)</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== 2. MAIN DIAGRAM: TWO-TIER ARCHITECTURE ==================== -->
+  <section class="main-frame">
+    <span class="frame-label">Long-Context RoPE Extension &amp; Two-Layer Transformer Circuit Composition（周波数空間の位置スケーリングと残差ストリーム上の2層回路合成）</span>
+    <span class="frame-sub-label">Interpolation Bound is ~600× smaller than Extrapolation [Chen+ 2023] ｜ Induction Heads require ≥2 Attention Layers [Elhage+ 2021]</span>
+
+    <!-- TIER 1: RoPE Context Extension Evolution -->
+    <div class="tier-box" style="background:var(--ext-bg);border:2px solid var(--ext-line);">
+      <div class="tier-hdr" style="color:var(--ext-ink);">
+        <span>Tier 1（位置符号化の外挿数理）：なぜ学習長 L を超えると破綻し、PI → NTK-aware → NTK-by-parts → YaRN で 128k まで拡張できるのか</span>
+        <span style="font-size:11px;">一般形：f'<sub>W</sub>(x<sub>m</sub>, m, θ<sub>d</sub>) = f<sub>W</sub>(x<sub>m</sub>, g(m), h(θ<sub>d</sub>)) , 拡張倍率 s = L' / L ［Peng+ ICLR 2024 / EleutherAI Blog］</span>
+      </div>
+
+      <div class="rope-flow">
+        <!-- Step 1: Why Direct Extrapolation Fails -->
+        <div class="step-card" style="background:var(--err-bg);border-color:var(--err-line);">
+          <div class="step-hdr" style="color:var(--err-ink);">
+            <span><span class="pill p-err">① 直接外挿の破綻原因</span> 臨界次元 d<sub>extra</sub> = 92 と OOD 回転角</span>
+            <span class="pill p-err">PPL &gt; 10<sup>3</sup> へ爆発</span>
+          </div>
+          <div>
+            次元 d の波長 λ<sub>d</sub> = 2π·10000<sup>2d/D</sup> が訓練長 T<sub>train</sub> を超える低周波次元は、<strong>事前学習中に1周期（2π）すら完走していない</strong>［Liu+ ICLR 2024］。LLaMA2（d=128, T<sub>train</sub>=4096）では<strong>最初の92次元しか1周期を経験しておらず、残り36次元が未学習の角度領域（OOD）へ突入</strong>しAttentionスコアが爆発する。
+          </div>
+          <div class="math-strip" style="border-left-color:var(--err-line);">
+            臨界次元: d_extra = 2⌈(d/2)·log_10000(T_train / 2π)⌉ = 92 (LLaMA2)
+          </div>
+        </div>
+
+        <div class="arrow-mid">
+          位置<br>圧縮
+          <svg width="24" height="16" viewBox="0 0 24 16"><path d="M2 8h18M15 3l5 5-5 5" stroke="#0f5132" stroke-width="2.2" fill="none"/></svg>
+        </div>
+
+        <!-- Step 2: Position Interpolation (PI) & Its Flaw -->
+        <div class="step-card">
+          <div class="step-hdr" style="color:var(--ext-ink);">
+            <span><span class="pill p-ext">② Position Interpolation (PI)</span> 線形縮小と高周波喪失</span>
+            <span class="pill p-cir">上界 ~600× 安定［Chen+］</span>
+          </div>
+          <div>
+            位置インデックスを <strong>g(m) = m/s, h(θ<sub>d</sub>) = θ<sub>d</sub></strong> で既知範囲 [0, L] に押し込む。外挿に比べ補間の上界は<strong>約600倍（2·294.73倍）小さい</strong>が、<strong>全次元の周波数を一律 1/s 倍に縮めるため高周波成分が消失</strong>し、隣接トークンの微小な位置差を識別できなくなる［Tancik+ 2020 NTK理論 / Peng+ 2024 L192］。
+          </div>
+          <div class="math-strip">
+            PI: g(m) = m / s,  h(θ_d) = θ_d  (1000 step FTで32k達成、短文PPL微増)
+          </div>
+        </div>
+
+        <div class="arrow-mid">
+          周波数<br>別制御
+          <svg width="24" height="16" viewBox="0 0 24 16"><path d="M2 8h18M15 3l5 5-5 5" stroke="#0f5132" stroke-width="2.2" fill="none"/></svg>
+        </div>
+
+        <!-- Step 3: NTK-aware & NTK-by-parts -->
+        <div class="step-card">
+          <div class="step-hdr" style="color:var(--ext-ink);">
+            <span><span class="pill p-ext">③ NTK-aware → NTK-by-parts</span> 波長に応じたランプ関数補間</span>
+            <span class="pill p-ext">α = 1, β = 32 (LLaMA)</span>
+          </div>
+          <div>
+            ・<strong>NTK-aware［bloc97 2023a］：</strong>基底を <strong>b' = b·s<sup>|D|/(|D|−2)</sup></strong> へ拡大し高周波を温存・低周波を大きく縮小（Code Llamaが b=10<sup>6</sup> で採用）。ただし一部次元が外挿になりFT後はPIに劣る。<br>
+            ・<strong>NTK-by-parts［bloc97 2023b］：</strong>回転回数 r(d) = L / λ<sub>d</sub> に応じ、<strong>波長が L より十分短い高周波（r &gt; β）は一切補間せず（γ=1）、L より長い低周波（r &lt; α）のみPI補間（γ=0）</strong>する区分線形ランプ関数を導入。
+          </div>
+          <div class="math-strip">
+            h(θ_d) = (1 − γ(r(d)))·(θ_d / s) + γ(r(d))·θ_d,   0 ≤ γ(r) ≤ 1
+          </div>
+        </div>
+
+        <div class="arrow-mid">
+          温度<br>乗算
+          <svg width="24" height="16" viewBox="0 0 24 16"><path d="M2 8h18M15 3l5 5-5 5" stroke="#0f5132" stroke-width="2.2" fill="none"/></svg>
+        </div>
+
+        <!-- Step 4: YaRN -->
+        <div class="step-card" style="background:#f0fdf4;border:1.5px solid var(--ext-line);">
+          <div class="step-hdr" style="color:var(--ext-ink);">
+            <span><span class="pill p-ext">④ YaRN</span> Attention温度スケーリングの統合</span>
+            <span class="pill p-ext">トークン 1/10・Step 1/2.5</span>
+          </div>
+          <div>
+            長文脈化でAttentionエントロピーが増大し分布が平坦化するのを防ぐため、<strong>Softmax前のロジットに温度 t（1/√t = 0.1 ln s + 1）を導入</strong>。RoPEの複素埋め込み自体を <strong>√(1/t) 倍（Length Scaling Trick）</strong>すれば、FlashAttention-2のコードを一切変更せず<strong>追加計算量ゼロ</strong>で128k文脈へ到達［Peng+ 2024 L327-353］。
+          </div>
+          <div class="math-strip" style="border-left-color:var(--ext-line);">
+            softmax((q_m^T k_n) / (t√|D|)),   √(1/t) = 0.1 ln(s) + 1  (400 step FT)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TIER 2: Transformer Circuits & 2-Layer Induction Head -->
+    <div class="tier-box" style="background:var(--ind-bg);border:2px solid var(--ind-line);">
+      <div class="tier-hdr" style="color:var(--ind-ink);">
+        <span>Tier 2（Transformer内部回路）：Residual Stream の線形分解と、2層 K-Composition による Induction Head（[A][B] … [A] → [B]）の構成原理</span>
+        <span style="font-size:11px;">出典: Elhage, Nanda, Olsson, Olah et al. "A Mathematical Framework for Transformer Circuits" (Anthropic 2021)</span>
+      </div>
+
+      <div class="circuit-flow">
+        <!-- Col 1: Residual Stream -->
+        <div class="step-card" style="background:var(--res-bg);border-color:var(--res-line);">
+          <div class="step-hdr" style="color:var(--res-ink);">
+            <span><span class="pill p-res">⑤ Residual Stream</span> 共有通信チャネルと仮想重み</span>
+            <span class="pill p-res">計算せず通信のみ</span>
+          </div>
+          <div>
+            ・<strong>完全な線形加算構造：</strong>残差ストリーム x<sub>ℓ</sub> = x<sub>0</sub> + ∑ Attn + ∑ MLP は非線形活性化を挟まない（ResNetとの決定的違い）。各層は線形射影で部分空間から「読み出し（Read）」、計算結果を別の部分空間へ「書き足す（Write）」［L147-154］。<br>
+            ・<strong>Virtual Weights（仮想重み）：</strong>残差ストリームが線形であるため、離れた第 ℓ<sub>1</sub> 層の出力重み W<sub>O</sub><sup>1</sup> と第 ℓ<sub>2</sub> 層の入力重み W<sub>I</sub><sup>2</sup> の積 <strong>W<sub>I</sub><sup>2</sup> W<sub>O</sub><sup>1</sup></strong> が2層を直接結ぶ暗黙の通信チャネルとなる［L158］。
+          </div>
+          <div class="math-strip" style="border-left-color:var(--res-line);">
+            2層Attention-Only展開: T = Id + ∑_h A^h ⊗ W_{OV}^h + ∑_{h2,h1} (A^{h2} A^{h1}) ⊗ (W_{OV}^{h2} W_{OV}^{h1})
+          </div>
+        </div>
+
+        <div class="arrow-mid">
+          テンソル<br>積分解
+          <svg width="24" height="16" viewBox="0 0 24 16"><path d="M2 8h18M15 3l5 5-5 5" stroke="#123a8f" stroke-width="2.2" fill="none"/></svg>
+        </div>
+
+        <!-- Col 2: QK and OV Circuits -->
+        <div class="step-card" style="background:var(--cir-bg);border-color:var(--cir-line);">
+          <div class="step-hdr" style="color:var(--cir-ink);">
+            <span><span class="pill p-cir">⑥ 単一Headの独立2回路分解</span> QK回路（Where）× OV回路（What）</span>
+            <span class="pill p-cir">ランク d<sub>head</sub> ≪ d<sub>model</sub></span>
+          </div>
+          <div>
+            通常の「全ヘッド結合＋W<sub>O</sub>乗算」は計算効率のための実装表現にすぎず、数学的には各ヘッド h が独立にランク d<sub>head</sub>（64〜128）の2つの低ランク合成行列を持つ［L113-119］：<br>
+            ・<strong>QK回路（W<sub>QK</sub><sup>h</sup> = W<sub>Q</sub><sup>hT</sup> W<sub>K</sub><sup>h</sup>）：</strong>どのトークンからどのトークンへAttentionを向けるか（Attentionパターン A<sup>h</sup> = softmax(x<sup>T</sup> W<sub>QK</sub><sup>h</sup> x)）だけを決定。<br>
+            ・<strong>OV回路（W<sub>OV</sub><sup>h</sup> = W<sub>O</sub><sup>h</sup> W<sub>V</sub><sup>h</sup>）：</strong>注意を向けた元トークンの残差ストリームから何を読み出し、出力ロジット（W<sub>U</sub> W<sub>OV</sub><sup>h</sup> W<sub>E</sub>）にどう影響させるかを決定。
+          </div>
+          <div class="math-strip" style="border-left-color:var(--cir-line);">
+            1層ヘッド出力: h(x) = (A^h ⊗ W_{OV}^h)·x,   A^h = softmax*(x^T W_E^T W_Q^{hT} W_K^h W_E x)
+          </div>
+        </div>
+
+        <div class="arrow-mid">
+          K-Comp<br>合成
+          <svg width="24" height="16" viewBox="0 0 24 16"><path d="M2 8h18M15 3l5 5-5 5" stroke="#4c1d95" stroke-width="2.2" fill="none"/></svg>
+        </div>
+
+        <!-- Col 3: 2-Layer Induction Head via K-Composition -->
+        <div class="step-card" style="background:#ffffff;border:2px solid var(--ind-line);">
+          <div class="step-hdr" style="color:var(--ind-ink);">
+            <span><span class="pill p-ind">⑦ Induction Head の2層協調動作</span> なぜ1層では不可能で2層必要なのか</span>
+            <span class="pill p-ind">正固有値コピー行列［L536］</span>
+          </div>
+          <div>
+            系列 <code class="code-inline">… [A][B] … [A]</code> の末尾 <code class="code-inline">[A]</code>（位置 T）から過去の <code class="code-inline">[B]</code>（位置 j+1）へ注意を向けるには、「位置 j+1 のトークン自身の値 B」ではなく<strong>「その1つ前（位置 j）が A だったこと」</strong>でKeyを検索しなければならない［L524, L636］：<br>
+            <strong>Step 1（Layer 0: Previous Token Head h<sub>−1</sub>）：</strong>位置 j+1 が直前の位置 j（トークン <code class="code-inline">A</code>）に注意を向け、OV回路 W<sub>OV</sub><sup>h−1</sup> で「直前トークン <code class="code-inline">A</code> の情報」を位置 j+1 の残差ストリーム部分空間へ書き込む。<br>
+            <strong>Step 2（Layer 1: Induction Head h<sub>2</sub>）：</strong>現在位置 T（トークン <code class="code-inline">A</code>）のQueryと、Layer 0が書き込んだ部分空間を <strong>K-Composition（W<sub>QK</sub><sup>h2</sup> W<sub>OV</sub><sup>h−1</sup>）</strong> で読んだ位置 j+1 のKeyが一致し、位置 j+1 のトークン <code class="code-inline">B</code> をOV回路で出力へコピーする！
+          </div>
+          <div class="math-strip" style="border-left-color:var(--ind-line);">
+            QK内のK-Composition項: Id ⊗ A^{h_{-1}} ⊗ (W_E^T W_{QK}^{h_2} W_{OV}^{h_{-1}} W_E)  ⇒  [A][B]…[A] で位置 [B] のスコア最大化
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 3. MIDDLE SECTION: ROPE EXTENSION BENCHMARK TABLE + CIRCUIT COMPOSITION TABLE ==================== -->
+  <section class="mid-section">
+
+    <!-- Left: Quantitative Comparison of RoPE Extension Methods -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>RoPE長文脈拡張手法の数式・周波数特性・原典測定データ比較表（→ 主図 Tier 1）</span>
+        <span class="sub">出典: Chen+ (arXiv:2306.15595) / Peng+ YaRN (ICLR 2024, arXiv:2309.00071) / Liu+ (ICLR 2024, arXiv:2310.05209)</span>
+      </div>
+      <table class="norm-table">
+        <thead>
+          <tr>
+            <th style="width:17%;">手法名</th>
+            <th style="width:25%;">変換式 g(m), h(θ<sub>d</sub>) と温度 t</th>
+            <th style="width:27%;">周波数空間での挙動と弱点</th>
+            <th style="width:31%;">原典の測定データ（Perplexity / Passkey / 学習効率）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="background:var(--err-bg);color:var(--err-ink);font-weight:800;">① 直接外挿<br>（Original RoPE）</td>
+            <td>g(m) = m, h(θ<sub>d</sub>) = 10000<sup>−2d/|D|</sup><br>（変更なし）</td>
+            <td>臨界次元 d<sub>extra</sub>（LLaMA2で第92次元）以降の低周波成分が訓練時に未経験の位相差へ入りAttention破綻</td>
+            <td>・<strong>Chen+ (2023)：</strong>LLaMA 7B（訓練長2048）は 4096 トークンを超えると PPL が <strong>&gt;10<sup>3</sup></strong> へ爆発し Passkey Retrieval も 0% に崩壊</td>
+          </tr>
+          <tr>
+            <td style="background:var(--ext-bg);color:var(--ext-ink);font-weight:800;">② Position Interpolation<br>（PI［Chen+ 2023］）</td>
+            <td>g(m) = m / s, h(θ<sub>d</sub>) = θ<sub>d</sub><br>（全次元を一律 1/s 倍に線形縮小）</td>
+            <td>未学習角度への突入を防ぎ上界が約600倍縮小するが、<strong>高周波成分まで一律に引き伸ばされ局所距離分解能が劣化</strong></td>
+            <td>・<strong>Chen+ (2023)：</strong>1,000ステップの微調整でLLaMA 7B〜65Bを32kへ拡張<br>・<strong>YaRN論文比較：</strong>Fine-tuningなし（s=4, 8k）ではPPLが急悪化し使えない</td>
+          </tr>
+          <tr>
+            <td style="background:var(--ext-bg);color:var(--ext-ink);font-weight:800;">③ NTK-aware /<br>Dynamic NTK</td>
+            <td>g(m) = m, h(θ<sub>d</sub>) = b'<sup>−2d/|D|</sup><br>b' = b · s<sup>|D|/(|D|−2)</sup><br>Dynamic: s = max(1, l'/L)</td>
+            <td>高周波をあまり縮小せず低周波を強く縮小。ただし最低周波の一部次元がわずかに外挿（Out-of-bound）となる</td>
+            <td>・<strong>Peng+ (2024) Table 1/Appendix：</strong><strong>Fine-tuningなし</strong>で8k〜16kへ伸ばす場合はPIより大幅に低PPL（Code Llamaが b=10<sup>6</sup> で100k対応に採用）<br>・しかし長文FTを行うと外挿次元が原因でPIやNTK-by-partsに劣る［L775］</td>
+          </tr>
+          <tr>
+            <td style="background:var(--ext-bg);color:var(--ext-ink);font-weight:800;">④ NTK-by-parts<br>［bloc97 2023b］</td>
+            <td>h(θ<sub>d</sub>) = (1−γ)θ<sub>d</sub>/s + γθ<sub>d</sub><br>r(d)=L/λ<sub>d</sub> に対し α=1, β=32 のランプ関数 γ(r)</td>
+            <td>波長 λ<sub>d</sub> &lt; L の高周波次元は一切変更せず局所関係を完全保持し、λ<sub>d</sub> &gt; L の次元のみ外挿を避けて補間</td>
+            <td>・<strong>Peng+ (2024) Table 1：</strong>FTなし・FTありの双方でPIとNTK-awareを上回る（LLaMA 7B s=16 FT後、32k評価でNTK-aware PPL 6.85 に対し 4.24 等）</td>
+          </tr>
+          <tr>
+            <td style="background:#dcfce7;color:var(--ext-ink);font-weight:800;">⑤ YaRN<br>［Peng+ ICLR 2024］</td>
+            <td>NTK-by-parts ＋ Softmax前温度 t<br><strong>√(1/t) = 0.1 ln(s) + 1</strong><br>（q<sub>m</sub>, k<sub>n</sub> の長さを √(1/t) 倍）</td>
+            <td>高周波保持・外挿回避に加え、長文脈でのAttention分布のエントロピー増大（ぼやけ）を温度 t で一様に補正</td>
+            <td>・<strong>Peng+ (2024)：</strong>PIの<strong>1/10のトークン数・1/2.5のステップ数（400 steps）</strong>でLLaMA 2 7B/13Bを64k〜128kへ拡張し全指標でSOTA達成（64k訓練モデルが未見の128kでもPPL低下せず外挿成功）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Right: 0L / 1L / 2L Transformer Circuits & 3 Composition Types -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Transformer Circuits の階層的分解：0層・1層・2層モデルの厳密な役割と3種のヘッド合成（→ 主図 Tier 2）</span>
+        <span class="sub">出典: Elhage et al. "A Mathematical Framework for Transformer Circuits" (Anthropic 2021)</span>
+      </div>
+      <table class="norm-table">
+        <thead>
+          <tr>
+            <th style="width:21%;">回路階層・合成種別</th>
+            <th style="width:32%;">数学的表現（パス展開・Frobeniusノルム指標）</th>
+            <th style="width:47%;">獲得されるアルゴリズム的能力と内部回路の挙動</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="background:var(--res-bg);color:var(--res-ink);font-weight:800;">0層 Transformer<br>（Direct Path）</td>
+            <td>T<sub>0</sub> = W<sub>U</sub> W<sub>E</sub><br>（Embedding から Unembedding への直接経路）</td>
+            <td>直前トークン x<sub>t</sub> のみから次トークン x<sub>t+1</sub> を予測する<strong>純粋な Bigram 統計モデル</strong>。深いモデルでもこの直接経路（Direct Path）は常に残差ストリームのベースラインとして機能する。</td>
+          </tr>
+          <tr>
+            <td style="background:var(--cir-bg);color:var(--cir-ink);font-weight:800;">1層 Attention-Only<br>（Skip-Trigram 回路）</td>
+            <td>T<sub>1</sub> = Id + ∑<sub>h∈H1</sub> A<sup>h</sup> ⊗ (W<sub>U</sub> W<sub>OV</sub><sup>h</sup> W<sub>E</sub>)<br>（各ヘッドが独立に1ステップ文脈を参照）</td>
+            <td>現在のトークン <code class="code-inline">[B]</code> と過去のトークン <code class="code-inline">[A]</code> のペアから次トークン <code class="code-inline">[C]</code> の確率を上下させる <strong>Skip-Trigram（[A]…[B] → [C]）</strong> を表現（例：Copying / メモリ消去負固有値ヘッド）。しかし「過去で <code class="code-inline">[A]</code> の直後に来た任意トークン」は検索できない。</td>
+          </tr>
+          <tr>
+            <td style="background:var(--ind-bg);color:var(--ind-ink);font-weight:800;">Q-Composition<br>（Query合成）</td>
+            <td>‖W<sub>QK</sub><sup>h2 T</sup> W<sub>OV</sub><sup>h1</sup>‖<sub>F</sub> / (‖W<sub>QK</sub><sup>h2 T</sup>‖<sub>F</sub> · ‖W<sub>OV</sub><sup>h1</sup>‖<sub>F</sub>)</td>
+            <td>第2層ヘッド h<sub>2</sub> が<strong>Queryベクトルを作る際</strong>に、第1層ヘッド h<sub>1</sub> が残差ストリームへ書き込んだ情報を読み出す合成（「何を探しに行くか」を前層の出力で条件づける）。</td>
+          </tr>
+          <tr>
+            <td style="background:var(--ind-bg);color:var(--ind-ink);font-weight:800;">K-Composition ★<br>（Key合成 / Induction）</td>
+            <td>‖W<sub>QK</sub><sup>h2</sup> W<sub>OV</sub><sup>h1</sup>‖<sub>F</sub> / (‖W<sub>QK</sub><sup>h2</sup>‖<sub>F</sub> · ‖W<sub>OV</sub><sup>h1</sup>‖<sub>F</sub>)<br>（2層トイモデルで唯一顕著に発達［L466-472］）</td>
+            <td>第2層ヘッド h<sub>2</sub> が<strong>Keyベクトルを作る際</strong>に、第1層ヘッド h<sub>1</sub>（Previous Token Head）が書き込んだ「1つ前のトークン情報」を読み出す。これにより<strong>自分の内容ではなく「自分の前に何が来たか」で検索される Induction Head</strong> が成立する。</td>
+          </tr>
+          <tr>
+            <td style="background:var(--ind-bg);color:var(--ind-ink);font-weight:800;">V-Composition<br>（Value合成 / Virtual Head）</td>
+            <td>‖W<sub>OV</sub><sup>h2</sup> W<sub>OV</sub><sup>h1</sup>‖<sub>F</sub> / (‖W<sub>OV</sub><sup>h2</sup>‖<sub>F</sub> · ‖W<sub>OV</sub><sup>h1</sup>‖<sub>F</sub>)<br>項: (A<sup>h2</sup> A<sup>h1</sup>) ⊗ (W<sub>U</sub> W<sub>OV</sub><sup>h2</sup> W<sub>OV</sub><sup>h1</sup> W<sub>E</sub>)</td>
+            <td>第1層ヘッドが動かしたValue情報を、第2層ヘッドがさらに別の位置へ転送する「仮想Attentionヘッド（Virtual Attention Head）」。2層Attention-Onlyモデルではアブレーションしても損失への寄与は微小で、K-Compositionが支配的［L542-558］。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- ==================== 4. BOTTOM SECTION: 6 MINI-CARDS + 3-WAY DEFINITION BAND ==================== -->
+  <section class="mini-grid">
+    <div class="mini-card" style="border-left-color:var(--res-ink);">
+      <div class="mini-card-title">
+        <span>① 100倍の帯域ボトルネック</span>
+        <span class="pill p-res">Elhage+ 2021 L166</span>
+      </div>
+      <div class="mini-card-body">
+        1つのMLP層だけで残差ストリームの4倍のニューロンを持つため、50層モデルの25層目では<strong>残差ストリーム次元数の100倍のニューロン群が100倍の後続ニューロン群とSuperposition（重ね合わせ）状態で通信</strong>するボトルネック活性となる。
+      </div>
+      <div class="mini-card-foot">出典: Transformer Circuits Framework L166</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--cir-ink);">
+      <div class="mini-card-title">
+        <span>② メモリ消去ヘッドと負固有値</span>
+        <span class="pill p-cir">Elhage+ 2021 L168</span>
+      </div>
+      <div class="mini-card-body">
+        残差ストリームに一度書かれた情報は明示的に消さない限り残り続ける。そのため一部のMLPニューロン（入出力重みのコサイン類似度が負）やAttention Head（W<sub>OV</sub> が大きな負の固有値を持ち現在トークン自身を見る）が<strong>「情報の消去（Memory Management）」</strong>を担う。
+      </div>
+      <div class="mini-card-foot">出典: Transformer Circuits Framework L164-168</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--err-ink);">
+      <div class="mini-card-title">
+        <span>③ Privileged Basis と Adam</span>
+        <span class="pill p-err">Elhage+ 2023</span>
+      </div>
+      <div class="mini-card-body">
+        理論上は残差ストリームの座標軸に特別な意味は無いはずだが、実際のLLMでは特定座標に<strong>他次元の最大20倍に達するOutlier値（層あたり20〜60次元、尖度 Kurtosis &gt; 3）</strong>が出現する。LayerNormや浮動小数点精度ではなく<strong>Adamの次元別正規化項</strong>が対称性を破る主因。
+      </div>
+      <div class="mini-card-foot">出典: Privileged Bases (2023) L23-59</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--obs-ink);">
+      <div class="mini-card-title">
+        <span>④ Logit Lens による中間観測</span>
+        <span class="pill p-obs">nostalgebraist / Nanda</span>
+      </div>
+      <div class="mini-card-body">
+        最終層を待たずに途中層 ℓ の残差ストリーム x<sub>ℓ</sub>（あるいは個別Head/MLPの出力）に直接 Unembedding 行列 W<sub>U</sub> を掛けて語彙ロジットへ射影する手法。層を下るごとに予測分布が段階的に正解へ収束していく過程を可視化できる。
+      </div>
+      <div class="mini-card-foot">出典: Neel Nanda Glossary / Interp Atlas</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--ind-ink);">
+      <div class="mini-card-title">
+        <span>⑤ 勾配帰属の飽和トラップ</span>
+        <span class="pill p-ind">Elhage+ 2021 L636</span>
+      </div>
+      <div class="mini-card-body">
+        Induction Headが確信を持って過去のトークン <code class="code-inline">[B]</code> に注意を向けるとき、Softmaxが飽和してKey側の勾配がほぼゼロになる。そのため単純な勾配ベースのSaliency手法では<strong>K-Compositionで決定的な役割を果たした1つ前の <code class="code-inline">[A]</code> の寄与を見落とす</strong>。
+      </div>
+      <div class="mini-card-foot">出典: Transformer Circuits Framework L636</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--ext-ink);">
+      <div class="mini-card-title">
+        <span>⑥ 小基底 RoPE (b=500) の発見</span>
+        <span class="pill p-ext">Liu+ ICLR 2024</span>
+      </div>
+      <div class="mini-card-body">
+        実はデフォルトの b=10000 が微調整時の外挿で最悪の基底値であり、b=10<sup>6</sup> へ大きくするだけでなく、逆に <strong>b=500 へ小さくして全次元の周期を訓練長内に収める</strong>ことでも上限なしの滑らかな長文脈外挿（48k超）が実現できる［L103-106, L189］。
+      </div>
+      <div class="mini-card-foot">出典: Scaling Laws of RoPE (arXiv:2310.05209)</div>
+    </div>
+  </section>
+
+  <!-- 3-Way Definition Band -->
+  <section class="def-band">
+    <div class="def-card">
+      <div class="def-card-title">
+        <span>概念比較①：位置の外挿（Extrapolation） vs 位置の補間（Interpolation）</span>
+        <span class="pill p-ext">Chen+ (2023) / Peng+ (2024)</span>
+      </div>
+      <strong>外挿（Extrapolation）：</strong>訓練時と同じ位置関数・基底のまま m &gt; L の未学習位置を入力する方式（臨界次元以降の未学習位相差でAttentionスコアが爆発）。<br>
+      <strong>補間（Interpolation）：</strong>位置インデックスや周波数 θ<sub>d</sub> をスケール変換し、訓練済みの位相範囲内に収める方式（PIは全周波数一律圧縮、NTK-by-parts/YaRNは高周波の波長を維持したまま低周波のみ補間）。
+    </div>
+
+    <div class="def-card">
+      <div class="def-card-title">
+        <span>概念比較②：QK 回路（Where to move） vs OV 回路（What to move）</span>
+        <span class="pill p-cir">Elhage+ (2021) / ARENA</span>
+      </div>
+      <strong>QK 回路（W<sub>Q</sub><sup>T</sup> W<sub>K</sub>）：</strong>残差ストリーム上のどのトークンペア間に強いAttention重み A<sub>ij</sub> を張るか（情報の移動元と移動先）を計算する双線形形式。<br>
+      <strong>OV 回路（W<sub>O</sub> W<sub>V</sub>）：</strong>移動元トークンに100%の注意が向いたと仮定したとき、そのトークンのどの特徴を読み出して移動先のロジットをどう増減させるか（正固有値＝コピー、負固有値＝抑制/消去）を決定する線形写像。
+    </div>
+
+    <div class="def-card">
+      <div class="def-card-title">
+        <span>概念比較③：Literal Copying（文字通りコピー） vs Fuzzy Nearest Neighbors（類推コピー）</span>
+        <span class="pill p-ind">Olsson+ (2022) L141-151</span>
+      </div>
+      <strong>小規模モデルの Induction Head：</strong>繰り返しランダム系列上で定義される <code class="code-inline">[A][B] … [A] → [B]</code> の厳密な同一トークン検索（Prefix Matching ＋ Copying）。<br>
+      <strong>大規模モデルの Induction Head：</strong>同じヘッドが抽象表現空間上で動作することで、<strong><code class="code-inline">[A*][B*] … [A] → [B]</code>（A≈A*, B≈B*：例えば異言語間の対応単語や概念類推）</strong>を実行する「文脈内最近傍探索器」へと連続的に拡張される。
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer-note">
+    <div>
+      ※ 出典：Chen+ "Position Interpolation" (arXiv:2306.15595) / Peng+ "YaRN: Efficient Context Window Extension" (ICLR 2024, arXiv:2309.00071) / EleutherAI Blog "Extending the RoPE" (2023) / Liu+ "Scaling Laws of RoPE-based Extrapolation" (ICLR 2024, arXiv:2310.05209) / Tancik+ "Fourier Features &amp; NTK" (NeurIPS 2020, arXiv:2006.10739) / Elhage+ "A Mathematical Framework for Transformer Circuits" (Anthropic 2021) / Olsson+ "In-context Learning and Induction Heads" (Anthropic 2022) / Elhage+ "Privileged Bases" (2023) / ARENA Ch.1.
+    </div>
+    <div style="font-weight:800;color:var(--hdr-darkest);white-space:nowrap;">
+      [2 / 3] LLM Internal Circuits Infographic — Rank II: Advanced（上級編：RoPE長文脈拡張とTransformer Circuits）
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

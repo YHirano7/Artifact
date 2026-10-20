@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>【推論エンジン＆出力制御・上級 / Rank II】Prefix Caching・長文脈KV退避とLogitsサンプリング・Constrained Decoding</title>
+<style>
+  :root {
+    --bg: #edf4f0;
+    --paper: #ffffff;
+    --ink-body: #1a2421;
+    --ink-sub: #475952;
+    --gray-line: #cbd5e1;
+
+    /* Deep Forest / Teal Header */
+    --hdr-darkest: #08281b;
+    --hdr-dark: #114c34;
+
+    /* Semantic Palette (matched with Top Legend) */
+    --pfx-bg: #e0edff;  --pfx-ink: #123a8f;  --pfx-line: #689bf2;  /* 青: Prefix Caching (vLLM APC / RadixAttention / 10倍差) */
+    --kvc-bg: #e1f5ea;  --kvc-ink: #0f5132;  --kvc-line: #3da870;  /* 緑: 長文脈KV退避 (StreamingLLM / H2O / SnapKV) & P/D制御 */
+    --smp-bg: #fef5d6;  --smp-ink: #704b00;  --smp-line: #e0b034;  /* 黄: Logitsサンプリング (Top-p / Min-p) & Response Prefill */
+    --fsm-bg: #f1e8fc;  --fsm-ink: #4c1d95;  --fsm-line: #9b6ee6;  /* 紫: Constrained Decoding (Outlines FSM / XGrammar PDA) */
+    --err-bg: #ffeef0;  --err-ink: #9f1239;  --err-line: #f43f5e;  /* 赤: キャッシュ破綻・Token Misalignment・意味的虚偽 */
+    --jmp-bg: #e6f6f8;  --jmp-ink: #0e5a6f;  --jmp-line: #38a3bd;  /* 水: Jump-Forward圧縮・Token Healing・非侵襲整合 */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 2100px;
+    height: 1446px;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink-body);
+    font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+    font-size: 13px;
+    line-height: 1.41;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .canvas {
+    width: 2100px;
+    padding: 14px 18px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* 1. HEADER & LEGEND */
+  .header-box {
+    background: linear-gradient(135deg, var(--hdr-darkest) 0%, var(--hdr-dark) 100%);
+    color: #ffffff;
+    border-radius: 10px;
+    padding: 12px 20px 10px;
+    border-bottom: 3px solid #34d399;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .rank-chip {
+    background: #34d399;
+    color: #06281b;
+    font-weight: 900;
+    font-size: 13px;
+    padding: 3px 10px;
+    border-radius: 5px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+
+  h1 {
+    font-size: 16.5px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  .scope-pill {
+    background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.35);
+    color: #a7f3d0;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+
+  .lead-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    border-top: 1px solid rgba(255,255,255,0.18);
+    padding-top: 6px;
+    font-size: 12.5px;
+    color: #e2e8f0;
+  }
+
+  .lead-row strong { color: #6ee7b7; }
+
+  .legend-bar {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    background: #ffffff;
+    color: var(--ink-body);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 11.1px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .lg { display: inline-flex; align-items: center; gap: 5px; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  /* 2. MAIN DIAGRAM */
+  .main-frame {
+    position: relative;
+    background: var(--paper);
+    border: 2px solid #52796f;
+    border-radius: 10px;
+    padding: 16px 14px 12px;
+    margin-top: 4px;
+  }
+
+  .frame-label {
+    position: absolute;
+    top: -11px;
+    left: 18px;
+    background: var(--paper);
+    padding: 0 10px;
+    font-size: 12.5px;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+    border: 1px solid #94a3b8;
+    border-radius: 4px;
+  }
+
+  .frame-sub-label {
+    position: absolute;
+    top: -11px;
+    right: 18px;
+    background: var(--pfx-bg);
+    color: var(--pfx-ink);
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 800;
+    border: 1px solid var(--pfx-line);
+    border-radius: 4px;
+  }
+
+  .arch-flow {
+    display: grid;
+    grid-template-columns: 600px 46px 1fr 46px 610px;
+    align-items: stretch;
+  }
+
+  .flow-arrow-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 10.2px;
+    font-weight: 800;
+    color: var(--hdr-dark);
+    text-align: center;
+    line-height: 1.15;
+  }
+
+  .nest-box {
+    border-radius: 8px;
+    padding: 9px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    justify-content: space-between;
+  }
+
+  .nest-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    padding-bottom: 3px;
+  }
+
+  .nest-title {
+    font-size: 13.4px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nest-desc {
+    font-size: 10.9px;
+    font-weight: 600;
+    opacity: 0.88;
+  }
+
+  .flow-step {
+    background: #ffffff;
+    border-radius: 6px;
+    padding: 5.5px 9px;
+    border: 1px solid rgba(0,0,0,0.12);
+    font-size: 11.3px;
+    line-height: 1.34;
+  }
+
+  .flow-step-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 800;
+    font-size: 11.9px;
+    margin-bottom: 2px;
+  }
+
+  .pill {
+    display: inline-block;
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid #94a3b8;
+    padding: 0px 7px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--ink-body);
+    white-space: nowrap;
+  }
+
+  .pill.p-pfx { background: var(--pfx-bg); border-color: var(--pfx-line); color: var(--pfx-ink); }
+  .pill.p-kvc { background: var(--kvc-bg); border-color: var(--kvc-line); color: var(--kvc-ink); }
+  .pill.p-smp { background: var(--smp-bg); border-color: var(--smp-line); color: var(--smp-ink); }
+  .pill.p-fsm { background: var(--fsm-bg); border-color: var(--fsm-line); color: var(--fsm-ink); }
+  .pill.p-err { background: var(--err-bg); border-color: var(--err-line); color: var(--err-ink); }
+  .pill.p-jmp { background: var(--jmp-bg); border-color: var(--jmp-line); color: var(--jmp-ink); }
+
+  .dashed-badge {
+    border: 1.5px dashed var(--err-line);
+    background: var(--err-bg);
+    color: var(--err-ink);
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.31;
+  }
+
+  .code-inline {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 10.5px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    padding: 0 4px;
+    border-radius: 3px;
+    color: #0f172a;
+  }
+
+  .window-anatomy {
+    background: #ffffff;
+    border: 2px solid var(--smp-line);
+    border-radius: 7px;
+    padding: 6.5px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 4.5px;
+  }
+
+  .win-slot {
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* 3. MIDDLE SECTION */
+  .mid-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .panel {
+    background: var(--paper);
+    border: 1px solid var(--gray-line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .panel-title {
+    font-size: 13.3px;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+    border-bottom: 1.5px solid #e2e8f0;
+    padding-bottom: 3px;
+    margin-bottom: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .panel-title span.sub {
+    font-size: 10.8px;
+    font-weight: 600;
+    color: var(--ink-sub);
+  }
+
+  .norm-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .norm-table th, .norm-table td {
+    border: 1px solid #cbd5e1;
+    padding: 3.8px 6px;
+    text-align: left;
+    vertical-align: top;
+    line-height: 1.32;
+  }
+
+  .norm-table th {
+    background: #f1f5f9;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+  }
+
+  /* 4. BOTTOM SECTION */
+  .mini-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+  }
+
+  .mini-card {
+    background: var(--paper);
+    border: 1px solid var(--gray-line);
+    border-left: 4px solid var(--pfx-ink);
+    border-radius: 6px;
+    padding: 6px 9px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 3px;
+  }
+
+  .mini-card-title {
+    font-size: 11.9px;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .mini-card-body {
+    font-size: 10.8px;
+    color: var(--ink-body);
+    line-height: 1.32;
+  }
+
+  .mini-card-foot {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--ink-sub);
+    border-top: 1px dashed #e2e8f0;
+    padding-top: 2px;
+  }
+
+  .def-band {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .def-card {
+    background: var(--paper);
+    border: 1px solid var(--gray-line);
+    border-top: 3px solid var(--hdr-dark);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    line-height: 1.33;
+  }
+
+  .def-card-title {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--hdr-darkest);
+    margin-bottom: 2px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-note {
+    font-size: 10.7px;
+    color: var(--ink-sub);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 4px;
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- ==================== 1. HEADER & LEGEND ==================== -->
+  <header class="header-box">
+    <div class="header-top">
+      <div class="title-wrap">
+        <span class="rank-chip">推論＆出力制御・上級 / Rank II</span>
+        <h1>KVキャッシュ10倍差は「連鎖ブロックハッシュ／Radix木」で実装され、100%構造化出力は「FSM語彙インデックス・PDA文脈独立キャッシュ」で高速化される</h1>
+      </div>
+      <div class="scope-pill">対象：①Prefix Caching・Attention Sink・H2O ＋ ②サンプリング・Outlines・XGrammar</div>
+    </div>
+    <div class="lead-row">
+      <div>
+        <strong>上級の核心結論：</strong>ハーネス側の「KVキャッシュヒット率10倍差（$0.30 vs $3.00）」と「Response Prefill / 構造化ツール呼出」は、推論エンジン内部の<strong>Prefix Caching（APC / RadixAttention）</strong>と<strong>Constrained Decoding（FSM / PDAによるLogitマスク <code style="color:#fff;">-∞</code>）</strong>に直結している。境界の歪み（Token Misalignment）とキャッシュ失効条件を制する者が本番エージェントを制す。
+      </div>
+      <div class="legend-bar">
+        <span class="lg"><span class="sw" style="background:var(--pfx-line);"></span>Prefix Caching (APC / Radix木 / 10倍差)</span>
+        <span class="lg"><span class="sw" style="background:var(--kvc-line);"></span>長文脈KV退避 (Sink / H2O) &amp; P/D制御</span>
+        <span class="lg"><span class="sw" style="background:var(--smp-line);"></span>サンプリング (Top-p / Min-p) &amp; Prefill制御</span>
+        <span class="lg"><span class="sw" style="background:var(--fsm-line);"></span>Constrained Decoding (FSM / PDA)</span>
+        <span class="lg"><span class="sw" style="background:var(--jmp-line);"></span>Jump-Forward・Token Healing</span>
+        <span class="lg"><span class="sw" style="background:var(--err-line);"></span>キャッシュ破綻・境界歪み・意味虚偽</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== 2. MAIN DIAGRAM ==================== -->
+  <section class="main-frame">
+    <span class="frame-label">Prefix Caching / Long-Context KV Eviction → Logits Sampling → Grammar-Guided Constrained Decoding（推論エンジンからデコーダ出力までの内部制御フロー）</span>
+    <span class="frame-sub-label">ハーネス接続：「KVキャッシュ10倍差 ($0.30 vs $3.00)」＋「Mask, Don't Remove（Response Prefill による行動空間マスク）」[Manus 2025]</span>
+
+    <div class="arch-flow">
+
+      <!-- LEFT COLUMN: Prefix Caching, Long-Context Eviction & P/D Scheduling -->
+      <div class="nest-box" style="background:var(--pfx-bg);border:2px solid var(--pfx-line);">
+        <div class="nest-hdr" style="color:var(--pfx-ink);">
+          <span class="nest-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            層A：Prefix Caching 内部構造と長文脈KV退避・P/D制御
+          </span>
+          <span class="nest-desc">なぜ1トークンの変更でキャッシュが全滅するのか</span>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-step-hdr" style="color:var(--pfx-ink);">
+            <span><span class="pill p-pfx">① vLLM V1 APC</span> ブロック連鎖ハッシュ（Chain Hash）と <code class="code-inline">BlockPool</code></span>
+            <span class="pill p-pfx">SHA256 / CBOR 決定論化</span>
+          </div>
+          ・<strong>ハッシュ連鎖構造［vLLM Design Docs / Zenn V1解説］：</strong>各ブロック（16 tok）のハッシュを <code class="code-inline">hash(Parent_Hash, Block_Tokens, Extra_Hash[LoRA_ID / Image_Hash / cache_salt])</code> として計算し、<strong>満杯ブロック（full blocks）のみ</strong>を <code class="code-inline">BlockPool</code> に登録。<code class="code-inline">find_longest_cache_hit()</code> で先頭から検索し、1トークンでも変われば以降の全ブロックハッシュが連鎖的に不一致となる。<br>
+          ・<strong>逆順退避：</strong>リクエスト完了時（<code class="code-inline">ref_cnt == 0</code>）、<strong>末尾ブロック（より長いプレフィックスに依存し再利用確率が低い）から先に</strong>フリーキューへ戻し、先頭（System Prompt）を長く残す。
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-step-hdr" style="color:var(--pfx-ink);">
+            <span><span class="pill p-pfx">② RadixAttention (SGLang)</span> 基数木（Radix Tree）によるKV保持＋LRU退避</span>
+            <span class="pill p-kvc">最大 6.4× スループット向上 [Zheng+ 2024]</span>
+          </div>
+          リクエスト完了後もKVキャッシュを破棄せず、可変長トークン列をエッジに持つ <strong>Radix Tree（圧縮トライ木）</strong> としてGPUメモリ上に保持。新規リクエストは根から最長一致検索してKVを再利用し、メモリ満杯時は<strong>参照カウント0の葉ノードからLRU退避</strong>。さらに共通プレフィックスを持つ待機リクエストを優先実行する <strong>Cache-Aware Scheduling（DFS近似）</strong> により、エージェント・Few-shot・マルチターン対話でレイテンシを最大 <strong>3.7×削減</strong>（木の管理オーバーヘッドは100リクエスト74.3秒中わずか0.2秒未満）。
+        </div>
+
+        <div class="flow-step" style="background:var(--kvc-bg);border-color:var(--kvc-line);">
+          <div class="flow-step-hdr" style="color:var(--kvc-ink);">
+            <span><span class="pill p-kvc">③ 長文脈KV退避 &amp; P/D制御</span> Attention Sink / H2O / SnapKV / Chunked Prefill</span>
+            <span class="pill p-kvc">400万tok対応・最大 29× 高速化</span>
+          </div>
+          ・<strong>StreamingLLM［Xiao+ ICLR 2024］：</strong>Softmaxの和が1になる制約上、モデルは無関係な<strong>先頭4トークンを「Attention Sink（余剰スコアの捨て場）」</strong>として使う。単純なWindow Attentionが破綻する原因はこの先頭トークン喪失にあり、<strong>先頭4 Sink＋直近スライディング窓</strong>を残すだけで <strong>400万トークン超</strong>を安定処理（再計算比 <strong>22.2×高速化</strong>）。<br>
+          ・<strong>H2O［Zhang+ NeurIPS 2023］&amp; SnapKV［Li+ 2024］：</strong>累積Attentionスコア上位のHeavy-Hitter（20%予算）＋直近KVのみ残す動的劣モジュラ退避でスループット最大 <strong>29×向上</strong>（H2O）。プロンプト末尾Observation窓のAttentionから重要クラスタを1パス抽出（SnapKV: <strong>3.6×高速化・8.2×省メモリ</strong>）。<br>
+          ・<strong>Sarathi-Serve［OSDI 2024］&amp; DistServe［OSDI 2024］：</strong>長文Prefillをチャンク分割してDecodeに相乗りさせる <strong>Chunked Prefill（vLLM V1既定）</strong>、またはPrefillとDecodeを別GPUに分離し干渉をゼロ化。
+        </div>
+      </div>
+
+      <!-- ARROW 1 -->
+      <div class="flow-arrow-col">
+        <div>
+          最終層<br>Logits <code style="font-size:9.5px;">z∈ℝ^|V|</code>
+          <svg width="32" height="18" viewBox="0 0 32 18"><path d="M2 9h26M22 3l6 6-6 6" stroke="#123a8f" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
+        </div>
+        <div style="margin-top:20px;">
+          Prefill固定<br>キャッシュ保護
+          <svg width="32" height="18" viewBox="0 0 32 18"><path d="M30 9H4M10 3L4 9l6 6" stroke="#704b00" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+
+      <!-- CENTER COLUMN: Logits Sampling, Response Prefill & Token Healing -->
+      <div class="nest-box" style="background:var(--smp-bg);border:2px solid var(--smp-line);">
+        <div class="nest-hdr" style="color:var(--smp-ink);">
+          <span class="nest-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 3v18h18"/><path d="M7 16c2-6 4-10 6-10s4 8 7 9"/></svg>
+            層B：Logitsサンプリングとハーネス側「Response Prefill / 境界修復」
+          </span>
+          <span class="nest-desc">確率分布の動的切断とサブワード境界の罠</span>
+        </div>
+
+        <div class="window-anatomy">
+          <div style="font-size:11.3px;font-weight:800;color:var(--smp-ink);display:flex;justify-content:space-between;">
+            <span>Logits <code class="code-inline">z_i</code> → Temperature <code class="code-inline">softmax(z_i / τ)</code> → 動的切断（Top-k / Top-p / Min-p）</span>
+            <span class="pill p-smp">不確実な裾 (Unreliable Tail) の排除</span>
+          </div>
+
+          <div class="win-slot" style="background:#fffef8;border:1px solid var(--smp-line);">
+            <span><strong>【Nucleus Sampling (Top-p)［Holtzman+ ICLR 2020］】</strong> 平坦な分布では小さい <code class="code-inline">k</code> が語彙を狭めすぎ、尖った分布では大きい <code class="code-inline">k</code> が低確率のゴミトークンを拾う。累積確率 <code class="code-inline">∑ P(x) ≥ p</code> の最小集合 <code class="code-inline">V^(p)</code> で候補数を動的伸縮させる。</span>
+            <span class="pill p-smp">分布形状への適応</span>
+          </div>
+
+          <div class="win-slot" style="background:var(--kvc-bg);border:1px solid var(--kvc-line);">
+            <span><strong>【Min-p Sampling［Nguyen+ ICLR 2025］】</strong> 高温（<code class="code-inline">τ=1.5</code>等）ではTop-pでも裾の無関係トークンが混入する。<strong>最上位トークンの確率 <code class="code-inline">p_max</code> に比例する閾値 <code class="code-inline">p_base × p_max</code></strong> 未満を切り捨て、高確信時は厳格・不確実時は多様にする。</span>
+            <span class="pill p-kvc">高温でも破綻しない創造性</span>
+          </div>
+
+          <div class="win-slot" style="background:var(--pfx-bg);border:1.5px solid var(--pfx-line);">
+            <span><strong>【ハーネスの Response Prefill 3モード［Manus 2025 / Hermes形式］】</strong> ツール定義を動的に消すと先頭KVキャッシュ（10倍差）が壊れるため、アシスタント応答先頭を事前入力して行動空間を絞る：<br>
+            ・<strong>Auto：</strong><code class="code-inline">&lt;|im_start|&gt;assistant</code> ｜ <strong>Required：</strong><code class="code-inline">&lt;|im_start|&gt;assistant&lt;tool_call&gt;</code> ｜ <strong>Specified：</strong><code class="code-inline">&lt;|im_start|&gt;assistant&lt;tool_call&gt;{"name": "browser_</code></span>
+            <span class="pill p-pfx">KVキャッシュ温存＋ツール群強制</span>
+          </div>
+
+          <div class="win-slot" style="background:var(--jmp-bg);border:1.5px solid var(--jmp-line);">
+            <span><strong>【Token Misalignment と Token Healing［Guidance / Domino ICML 2024］】</strong> <code class="code-inline">"This is a "</code> で切るとBPE本来の結合トークン <code class="code-inline">" fine" [3734]</code> が使えず稀な <code class="code-inline">"fine" [38125]</code> が強制され <strong>Perplexityが 4.17 → 24.50〜26.75 へ爆発</strong>。<strong>Token Healing</strong>は末尾を1トークン巻き戻し、元の末尾文字をプレフィックスに持つトークンへ制約して修復する。</span>
+            <span class="pill p-jmp">境界バイアスの完全除去</span>
+          </div>
+        </div>
+
+        <div class="dashed-badge">
+          ⚡ <strong>Anthropic Prompt Caching の実測経済性と破綻条件［Anthropic 2024-2026 / Manus 2025］：</strong><br>
+          100K tok でのキャッシュヒットは <strong>TTFT 11.5s → 2.4s（-79%）・コスト -90%（Read 0.1× / Write 1.25×）</strong>。ただし①システムプロンプト先頭の秒単位タイムスタンプ、②非決定論的JSONキー順序、③ツール定義の追加・削除・並び替え、④5分TTL超過の同期ツール待ち、のどれか1つでも起きると<strong>以降の全KVキャッシュが無効化</strong>される。
+        </div>
+      </div>
+
+      <!-- ARROW 2 -->
+      <div class="flow-arrow-col">
+        <div>
+          不正トークン<br><code style="font-size:9.5px;">logit = -∞</code>
+          <svg width="32" height="18" viewBox="0 0 32 18"><path d="M2 9h26M22 3l6 6-6 6" stroke="#4c1d95" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
+        </div>
+        <div style="margin-top:20px;">
+          受理トークン<br>状態遷移
+          <svg width="32" height="18" viewBox="0 0 32 18"><path d="M30 9H4M10 3L4 9l6 6" stroke="#0e5a6f" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: Constrained Decoding Engines (Outlines / SGLang / XGrammar) -->
+      <div class="nest-box" style="background:var(--fsm-bg);border:2px solid var(--fsm-line);">
+        <div class="nest-hdr" style="color:var(--fsm-ink);">
+          <span class="nest-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><path d="M9 6h6M7.5 8.5l3 7M16.5 8.5l-3 7"/></svg>
+            層C：Constrained Decoding（FSM・PDA/CFGによるLogitマスク制御）
+          </span>
+          <span class="nest-desc">非法トークンの確率を softmax 前に 0 へ固定</span>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-step-hdr" style="color:var(--fsm-ink);">
+            <span><span class="pill p-fsm">④ Outlines</span> 有限状態機械（FSM）と語彙インデックス <code class="code-inline">σ : Q → P(V)</code></span>
+            <span class="pill p-fsm">マスク取得 O(|V|) → 平均 O(1)</span>
+          </div>
+          正規表現やJSON Schemaを有限状態機械（FSM）に変換。素朴な実装では毎ステップ語彙全体（<code class="code-inline">|V| = 50,257〜128,256</code>）を走査して有効トークンを判定するため <code class="code-inline">O(|V|)</code> の致命的遅延が生じる。<strong>Willard &amp; Louf (2023)</strong> は生成前に語彙全文字列をFSM上で部分マッチングさせ、<strong>各FSM状態 <code class="code-inline">q ∈ Q</code> から受理可能なトークン集合を引くハッシュマップ <code class="code-inline">σ</code> を前計算</strong>することで、実行時のマスク生成を <strong>平均 <code class="code-inline">O(1)</code></strong> に落とした。
+        </div>
+
+        <div class="flow-step" style="background:var(--jmp-bg);border-color:var(--jmp-line);">
+          <div class="flow-step-hdr" style="color:var(--jmp-ink);">
+            <span><span class="pill p-jmp">⑤ Compressed FSM (SGLang)</span> 単一遷移パス圧縮と Jump-Forward Decoding</span>
+            <span class="pill p-jmp">レイテンシ最大 2× 削減 [LMSYS 2024]</span>
+          </div>
+          トークン単位FSMは <code class="code-inline">{"name": "</code> のような確定文字列でも「1ステップ1トークン」ずつDecodeを回す弱点がある。SGLangは正規表現FSMの<strong>分岐がない単一遷移エッジを1本の文字列に圧縮</strong>し、確定文字列を一括トークン化して <strong>Prefill（1回のForwardパス）で複数トークンをジャンプ前進</strong>させ、通常の非制約デコードより速いJSON生成を実現（トークン境界は再トークン化で厳密処理）。
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-step-hdr" style="color:var(--fsm-ink);">
+            <span><span class="pill p-fsm">⑥ XGrammar (MLSys 2025)</span> PDA＋文脈独立トークンキャッシュ＋永続スタック</span>
+            <span class="pill p-fsm">CFGで最大 100× 高速化 [Dong+ 2025]</span>
+          </div>
+          再帰を含む文脈自由文法（CFG / 任意JSON・関数呼出・コード）はスタックを持つ <strong>Byte-level Pushdown Automaton (PDA)</strong> が必要になる。XGrammarは語彙を <strong>①文脈独立トークン（スタック先頭位置だけで合否が決まる・語彙の99%超）</strong> と <strong>②文脈依存トークン（親ルールへのPopを伴い全スタック検査が必要・1%未満）</strong> に分割。①を <strong>Adaptive Token Mask Cache</strong> に前計算し、②を木構造の <strong>Persistent Stack</strong> で高速検査＋CPUマスク生成とGPU実行を並列オーバーラップさせ、エンドツーエンドで<strong>ほぼゼロ遅延</strong>を達成。
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== 3. MIDDLE SECTION ==================== -->
+  <section class="mid-section">
+
+    <!-- Left: Normalized Comparison of KV Cache Sharing & Compression Methods -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>KVキャッシュ再利用・長文脈圧縮・P/D制御 6大手法の内部データ構造と破綻条件（→ 主図層A・B）</span>
+        <span class="sub">出典: vLLM Docs / Zheng+ (2024) / Xiao+ (2024) / Zhang+ (2023) / Li+ (2024) / Agrawal+ (2024)</span>
+      </div>
+      <table class="norm-table">
+        <thead>
+          <tr>
+            <th style="width:19%;">手法 / システム</th>
+            <th style="width:20%;">内部データ構造</th>
+            <th style="width:32%;">アルゴリズムの核心動作</th>
+            <th style="width:29%;">実測ゲインとキャッシュ破綻・制約条件</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>① vLLM V1 APC</strong><br>（Automatic Prefix Caching）</td>
+            <td>連鎖ハッシュ辞書<br><code class="code-inline">BlockHashToBlockMap</code></td>
+            <td><code class="code-inline">(親ハッシュ, 16トークン列, ExtraHash)</code> をSHA256/CBORでハッシュ化。<code class="code-inline">find_longest_cache_hit</code> で一致する満杯ブロックの <code class="code-inline">ref_cnt</code> を増やす</td>
+            <td><strong>TTFT激減・コスト1/10。</strong>※先頭1トークンでも変わると以降の全ハッシュが変化。満杯未満の端数ブロックはキャッシュ対象外</td>
+          </tr>
+          <tr>
+            <td><strong>② SGLang RadixAttention</strong><br>［Zheng+ NeurIPS 2024］</td>
+            <td><strong>Radix Tree（基数木）</strong><br>＋LRU葉ノード退避</td>
+            <td>完了リクエストのプロンプト＋生成結果KVも捨てずに木構造で保持。マルチターンや木探索の分岐共有を自然に表現しDFS順でバッチ編成</td>
+            <td><strong>スループット最大 6.4×・レイテンシ 3.7× 削減。</strong>※Hybridモデル（SWA/Mamba混在）ではUnified Radix Cache境界制御が要る</td>
+          </tr>
+          <tr>
+            <td><strong>③ StreamingLLM</strong><br>［Xiao+ ICLR 2024］</td>
+            <td><strong>先頭4 Sink トークン</strong><br>＋Rolling KV Cache</td>
+            <td>Softmax正規化で余剰Attentionを吸収する先頭4トークンのKVを固定保持し、中間を捨てて直近スライディング窓と結合（位置埋め込みはキャッシュ内相対位置で再割当）</td>
+            <td><strong>400万トークン超でPerplexity崩壊なし、再計算比 22.2× 高速化。</strong>※中間で捨てたトークンの具体的な事実検索（Needle）は不可</td>
+          </tr>
+          <tr>
+            <td><strong>④ H2O</strong><br>［Zhang+ NeurIPS 2023］</td>
+            <td><strong>Heavy-Hitter（累積上位）</strong><br>＋Recent KV 動的退避</td>
+            <td>Attention行列の95%超が疎である性質から、各Decodeステップの累積Attentionスコア上位（Heavy-Hitter）と直近トークンに予算を等分し低スコアKVを逐次退避</td>
+            <td><strong>20%のKV予算（メモリ1/5）で品質維持、FlexGen/DeepSpeed比で最大 29× スループット向上。</strong>※FlashAttentionとの統合には工夫が要る</td>
+          </tr>
+          <tr>
+            <td><strong>⑤ SnapKV</strong><br>［Li+ 2024］</td>
+            <td>プロンプト末尾<br><strong>Observation Window</strong></td>
+            <td>生成前のPrefill段階で、プロンプト末尾の数十トークン（観察窓）が過去トークンに向けるAttentionパターンをプーリングし、ヘッドごとに重要KV位置を1パス選択</td>
+            <td><strong>16K入力で生成速度 3.6×・メモリ効率 8.2× 向上、A100 1枚で380K文脈処理。</strong>※Decodeステップごとのスコア再計算が不要</td>
+          </tr>
+          <tr>
+            <td><strong>⑥ Sarathi-Serve / DistServe</strong><br>［OSDI 2024 × 2本］</td>
+            <td><strong>Chunked Prefill</strong> 対<br><strong>P/D 別GPUプール分離</strong></td>
+            <td>Sarathiは長文Prefillをチャンク分割しDecodeバッチにピギーバックして生成停止（stall）を防ぐ。DistServeはPrefill用GPUとDecode用GPUを分離しKVを高速転送</td>
+            <td><strong>Sarathiは単一GPU群でTBTスパイクを除去（vLLM V1既定）。DistServeはTTFT/TPOT両SLO遵守のGPUあたりGoodputを最大 4.4× 向上</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Right: Normalized Comparison of Constrained Decoding Engines -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Constrained Decoding（構造化生成）5大方式の内部オートマトン・計算量・推論エンジン統合の比較（→ 主図層B・C）</span>
+        <span class="sub">出典: Willard &amp; Louf (2023) / Dong+ (MLSys 2025) / LMSYS (2024) / Ugare+ (2024) / Beurer-Kellner+ (2024)</span>
+      </div>
+      <table class="norm-table">
+        <thead>
+          <tr>
+            <th style="width:19%;">エンジン / 論文</th>
+            <th style="width:18%;">文法クラスと表現</th>
+            <th style="width:34%;">語彙走査 <code class="code-inline">O(|V|)</code> を消すコア最適化</th>
+            <th style="width:29%;">実測性能とシステム統合上の特徴・限界</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>① Outlines</strong><br>［Willard &amp; Louf 2023］</td>
+            <td>正規表現 / JSON Schema<br>→ <strong>決定性FSM</strong></td>
+            <td>語彙の全トークン文字列をFSM上で事前走査し、状態 <code class="code-inline">q</code> から有効トークン集合へのインデックス <code class="code-inline">σ: Q → P(V)</code> を構築して実行時ルックアップを<strong>平均 <code class="code-inline">O(1)</code></strong> 化</td>
+            <td><strong>JSON/Regex制御の原典。</strong>※vLLM v0ではPython LogitProcessor実装のためバッチ内同期ブロックや初回FSMコンパイル遅延（TTFT増）が発生［vLLM Blog 2025］</td>
+          </tr>
+          <tr>
+            <td><strong>② SGLang Compressed FSM</strong><br>［LMSYS 2024 / Zheng+］</td>
+            <td>正規表現 / JSON Schema<br>→ <strong>圧縮FSM</strong></td>
+            <td>FSMの分岐のない単一遷移パス（<code class="code-inline">{"name": "</code> 等）を1つの確定文字列エッジに圧縮し、複数トークンを一括で <strong>Jump-Forward（Prefill前進）</strong></td>
+            <td><strong>Outlines+vLLM比でレイテンシ最大 2× 削減・スループット 2.5× 向上（通常デコードより高速）。</strong>※スケジューラ層でのPrefill介入が必須</td>
+          </tr>
+          <tr>
+            <td><strong>③ XGrammar</strong><br>［Dong+ MLSys 2025］</td>
+            <td><strong>完全な文脈自由文法 (CFG)</strong><br>→ Byte-level PDA</td>
+            <td>語彙を<strong>文脈独立トークン（99%超・Adaptive Token Mask Cacheに前計算）</strong>と<strong>文脈依存トークン（1%未満・Persistent Stackで実行時検査）</strong>に分離＋文脈拡張</td>
+            <td><strong>CFG/JSON Schemaで既存比最大 100× 高速化、vLLM統合でTPOT最大 5× 改善。</strong>C++/pthread実装でGPU Forwardとマスク計算を完全並列化</td>
+          </tr>
+          <tr>
+            <td><strong>④ SynCode</strong><br>［Ugare+ 2024］</td>
+            <td>EBNFによる汎用CFG<br>（Python / Go / JSON等）</td>
+            <td>レキサの終端記号DFA群に対し、オフラインで <strong>DFA Mask Store <code class="code-inline">M_α</code>（状態×先読み深さ→有効トークン集合のルックアップ表）</strong> を構築（Llama-2-7Bで181MB）</td>
+            <td><strong>プログラミング言語の構文エラーを96%削減。</strong>トークン境界とレキサ終端記号の不一致（Remainder）をパーサ状態とDFA遷移で厳密吸収</td>
+          </tr>
+          <tr>
+            <td><strong>⑤ Domino</strong><br>［Beurer-Kellner+ ICML 24］</td>
+            <td>CFG ＋ <strong>Subword-Aligned</strong><br>非侵襲生成</td>
+            <td>テンプレート強制によるBPEサブワード分断（Misalignment）を避けるため、モデルの自然なトークン分割を許す文字スキャナ前計算木＋投機的木探索を結合</td>
+            <td><strong>精度低下ゼロ（非侵襲）のまま非制約生成比で最大 2.7× 高速化。</strong>素朴なテンプレート固定が引き起こすPerplexity爆発（4.17→26.75）を回避</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- ==================== 4. BOTTOM SECTION: 6 MINI-CARDS + 3-WAY DEFINITION BAND ==================== -->
+  <section class="mini-grid">
+    <div class="mini-card" style="border-left-color:var(--pfx-ink);">
+      <div class="mini-card-title">
+        <span>① Multi-tenant Cache Salt</span>
+        <span class="pill p-pfx">vLLM セキュリティ</span>
+      </div>
+      <div class="mini-card-body">
+        共有推論環境でPrefix Cachingを有効にすると、応答速度差（TTFT）から他テナントのキャッシュ済みプロンプトを推測する<strong>タイミング攻撃</strong>が成立し得る。vLLMは第1ブロックに <code class="code-inline">cache_salt</code> を注入してテナント間を分離する。
+      </div>
+      <div class="mini-card-foot">出典: vLLM Design Docs "Automatic Prefix Caching" L974</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--fsm-ink);">
+      <div class="mini-card-title">
+        <span>② int32 Token Bitmask</span>
+        <span class="pill p-fsm">XGrammar 実装</span>
+      </div>
+      <div class="mini-card-body">
+        語彙サイズのBool配列をそのままCPU→GPU転送する代わりに、形状 <code class="code-inline">(batch_size, ceil(vocab_size / 32))</code> の <strong><code class="code-inline">int32</code> ビットセット</strong> に32倍圧縮してCPU上で埋め、<code class="code-inline">apply_token_bitmask_inplace</code> でGPU Logitsへ直接適用する。
+      </div>
+      <div class="mini-card-foot">出典: XGrammar Docs "Workflow of XGrammar"</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--jmp-ink);">
+      <div class="mini-card-title">
+        <span>③ vLLM V1 スケジューラ統合</span>
+        <span class="pill p-jmp">Bitmask Broadcast</span>
+      </div>
+      <div class="mini-card-body">
+        vLLM v0は各GPU Worker内のLogitProcessorでマスク計算していたためバッチ全体をブロックしていた。V1では<strong>スケジューラ層へGuided Decodingを引き上げ、1プロセスで計算したBitmaskを全GPU WorkerへBroadcast</strong>する設計へ進化。
+      </div>
+      <div class="mini-card-foot">出典: vLLM Blog "Structured Decoding in vLLM" L129-145</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--smp-ink);">
+      <div class="mini-card-title">
+        <span>④ ツール命名プレフィックス設計</span>
+        <span class="pill p-smp">Manus の実戦知</span>
+      </div>
+      <div class="mini-card-body">
+        ブラウザ系ツールを <code class="code-inline">browser_*</code>、シェル系を <code class="code-inline">shell_*</code> に統一しておけば、ステートフルなLogitProcessorを組まなくても <code class="code-inline">{"name": "browser_</code> までの<strong>単純なResponse Prefillだけで特定ツール群への制限が完結</strong>する。
+      </div>
+      <div class="mini-card-foot">出典: Ji "Lessons from Building Manus" (2025) L80-82</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--kvc-ink);">
+      <div class="mini-card-title">
+        <span>⑤ Dedicated Sink Token 事前学習</span>
+        <span class="pill p-kvc">StreamingLLM 発見</span>
+      </div>
+      <div class="mini-card-body">
+        通常のLLMは複数の先頭トークン（4個）をAttention Sinkとして使うが、<strong>事前学習時に先頭へ1個の専用プレースホルダ（Learn-able Sink Token）を置いて学習</strong>すると、推論時はわずか1トークンのSink保持だけで無限長ストリームが安定する。
+      </div>
+      <div class="mini-card-foot">出典: Xiao+ StreamingLLM (ICLR 2024) L29-31, L141-147</div>
+    </div>
+
+    <div class="mini-card" style="border-left-color:var(--err-ink);">
+      <div class="mini-card-title">
+        <span>⑥ 構文準拠 99.9% ≠ 意味的正しさ</span>
+        <span class="pill p-err">本番事故の盲点</span>
+      </div>
+      <div class="mini-card-body">
+        Constrained Decodingは「<code class="code-inline">confidence</code> が float 型であること」は100%保証するが、「常に0.99を返す嘘」や「<code class="code-inline">subtotal + tax != total</code> の計算不整合」は防げない。<strong>Pydanticモデルでの事後意味検証レイヤー＋再試行ループ</strong>が必須となる。
+      </div>
+      <div class="mini-card-foot">出典: libercraft (Zenn 2026) "Structured Outputは整形であって正しさではない"</div>
+    </div>
+  </section>
+
+  <!-- 3-Way Definition Band -->
+  <section class="def-band">
+    <div class="def-card">
+      <div class="def-card-title">
+        <span>概念比較①：vLLM Hash-based APC（ブロック連鎖ハッシュ）vs SGLang RadixAttention（基数木）</span>
+        <span class="pill">vLLM Docs / Zheng+ (2024)</span>
+      </div>
+      <strong>vLLM APC：</strong>固定サイズ（16 tok）の満杯ブロックごとに親ハッシュを連鎖させたSHA256/CBORハッシュでグローバル辞書を引く（ファイルシステムのコンテンツアドレス記憶に近い）。<br>
+      <strong>SGLang RadixAttention：</strong>可変長トークン列をエッジに持つ基数木（Radix Tree）で全リクエストのKVと分岐構造を直接保持し、LRU退避とDFSキャッシュ優先スケジューリングを一体実行する。
+    </div>
+
+    <div class="def-card">
+      <div class="def-card-title">
+        <span>概念比較②：JSON Mode（Legacy）vs Structured Outputs（Strict CFG）vs 意味検証レイヤー</span>
+        <span class="pill">libercraft (2026) / XGrammar</span>
+      </div>
+      <strong>JSON Mode：</strong>壊れていないJSON構文のみを保証し、必須キー欠落や型違反は防げない。<br>
+      <strong>Structured Outputs（Strict）：</strong>FSM/CFGのLogitマスク（<code class="code-inline">-∞</code>）でスキーマ・型・enum準拠を生成時に100%強制する。<strong>意味検証レイヤー：</strong>生成された値がドメイン規則（明細合計一致など）を満たすかを検証する第3の層。
+    </div>
+
+    <div class="def-card">
+      <div class="def-card-title">
+        <span>概念比較③：StreamingLLM（Sink固定）vs H2O（累積スコア動的退避）vs SnapKV（末尾窓1パス）</span>
+        <span class="pill">Xiao+ (2024) / Zhang+ (2023) / Li+ (2024)</span>
+      </div>
+      <strong>StreamingLLM：</strong>先頭4トークン（Sink）＋直近窓のみを残し、無限長ストリームのPerplexity崩壊を防ぐ（中間情報は捨てる）。<br>
+      <strong>H2O：</strong>Decodeステップごとに累積Attentionスコアを計算し上位Heavy-Hitterを残す（高精度だが毎ステップ追跡）。<strong>SnapKV：</strong>Prefill末尾の観察窓から重要KVクラスタを1パスで選びDecode中の追跡コストを省く。
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer-note">
+    <div>
+      ※ 出典：Zheng+ "SGLang / RadixAttention" (NeurIPS 2024, arXiv:2312.07104) / vLLM Docs "Automatic Prefix Caching" / Xiao+ "StreamingLLM" (ICLR 2024, arXiv:2309.17453) / Zhang+ "H2O" (NeurIPS 2023, arXiv:2306.14048) / Li+ "SnapKV" (arXiv:2404.14469) / Agrawal+ "Sarathi-Serve" (OSDI 2024) / Zhong+ "DistServe" (OSDI 2024) / Holtzman+ "Nucleus Sampling" (ICLR 2020) / Nguyen+ "Min-p" (ICLR 2025) / Willard &amp; Louf "Outlines" (arXiv:2307.09702) / Dong+ "XGrammar" (MLSys 2025, arXiv:2411.15100) / Beurer-Kellner+ "Domino" (ICML 2024) / Guidance Docs / Manus (2025) / Anthropic Docs.
+    </div>
+    <div style="font-weight:800;color:var(--hdr-darkest);white-space:nowrap;">
+      [3 / 4] LLM Inference &amp; Decoding Infographic — Rank II: Advanced（KV再利用＆構造化デコード・上級編）
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
